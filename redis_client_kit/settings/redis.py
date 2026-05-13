@@ -19,7 +19,7 @@ class RedisConnectionSettings(BaseModel):  # type: ignore[misc]
         """Return password as plain string."""
         if self.password is None:
             return None
-        return self.password.get_secret_value()
+        return self.password.get_secret_value()  # type: ignore[no-any-return]
 
 
 class RedisClusterSettings(BaseModel):  # type: ignore[misc]
