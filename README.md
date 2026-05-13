@@ -48,7 +48,7 @@ pip install redis-client-kit[providers]
 pip install redis-client-kit[all]
 ```
 
-**Requirements:** Python 3.11+
+**Requirements:** Python 3.10+
 
 ## Quick Start
 
