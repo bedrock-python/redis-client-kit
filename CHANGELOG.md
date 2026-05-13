@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.0...redis-client-kit-v0.1.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* correct Python version requirement to 3.10+ ([2764531](https://github.com/bedrock-python/redis-client-kit/commit/2764531eea98083dcd194a3721dbca524a5f926a))
+
 ## 0.1.0 (2026-05-13)
 
 
