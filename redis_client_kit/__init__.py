@@ -24,7 +24,7 @@ from .utils import build_base_redis_kwargs, build_redis_retry, parse_redis_url_n
 try:
     __version__ = version("redis-client-kit")
 except PackageNotFoundError:  # pragma: no cover
-    __version__ = "0.1.0"
+    __version__ = "0.1.2"
 
 # ruff: noqa: RUF022
 __all__ = [

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.1...redis-client-kit-v0.1.2) (2026-05-16)
+
+
+### Bug Fixes
+
+* update publish workflow, release-please version search, gitignore ([#5](https://github.com/bedrock-python/redis-client-kit/issues/5)) ([9f82f2b](https://github.com/bedrock-python/redis-client-kit/commit/9f82f2b8cec5d6f32a9184337ddfc3ef3b68b7d3))
+
 ## 0.1.1 (2026-05-13)
 
 
