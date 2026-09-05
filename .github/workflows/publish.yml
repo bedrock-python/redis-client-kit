@@ -57,5 +57,15 @@ jobs:
           ref: ${{ needs.check.outputs.tag }}
 
       - uses: astral-sh/setup-uv@v7
+
+      # Release Please already committed this version into __version__.py; the
+      # rewrite is a safety net so a tag can never publish a stale version.
+      - name: Set version from release tag
+        run: |
+          VERSION="${{ needs.check.outputs.tag }}"
+          VERSION="${VERSION#redis-client-kit-v}"
+          echo "__version__ = \"$VERSION\"" > redis_client_kit/__version__.py
+          cat redis_client_kit/__version__.py
+
       - run: uv build
       - run: uv publish
