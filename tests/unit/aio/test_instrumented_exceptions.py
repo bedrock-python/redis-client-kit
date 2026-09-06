@@ -21,7 +21,7 @@ async def test__instrumented_redis__pool_stats_exception__logs_and_continues(moc
 
     # Create mock pool that raises exception when accessing attributes
     mock_pool = MagicMock()
-    type(mock_pool)._all_connections = property(lambda self: (_ for _ in ()).throw(Exception("Pool error")))
+    type(mock_pool)._available_connections = property(lambda self: (_ for _ in ()).throw(Exception("Pool error")))
     client.connection_pool = mock_pool
 
     # Act

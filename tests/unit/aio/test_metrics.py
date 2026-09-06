@@ -17,9 +17,9 @@ async def test__instrumented_redis__execute_command_success__records_metrics_and
 ) -> None:
     # Arrange
     client = InstrumentedRedis(metrics=mock_metrics)
-    client.connection_pool = MagicMock()
-    client.connection_pool._all_connections = [1, 2, 3]
-    client.connection_pool._in_use_connections = [1]
+    # The real redis-py async pool: _available_connections is a list, _in_use_connections a set.
+    client.connection_pool._available_connections = [1, 2]
+    client.connection_pool._in_use_connections = {3}
 
     # Act
     with patch("redis.asyncio.Redis.execute_command", new_callable=AsyncMock) as mock_execute:
@@ -30,6 +30,28 @@ async def test__instrumented_redis__execute_command_success__records_metrics_and
     assert result == "OK"
     mock_metrics.record_pool_stats.assert_called_with(pool_size=3, pool_checked_out=1)
     mock_metrics.record_command.assert_called_with(command="SET", status="success", duration=pytest.approx(0, abs=1))
+
+
+@pytest.mark.asyncio
+async def test__instrumented_redis__real_connection_pool__reports_non_zero_pool_size(
+    mock_metrics: MagicMock,
+) -> None:
+    # Arrange
+    client = InstrumentedRedis(metrics=mock_metrics)
+    pool = client.connection_pool
+    pool._available_connections.append(pool.make_connection())
+    pool._in_use_connections.add(pool.make_connection())
+
+    # Act
+    with patch("redis.asyncio.Redis.execute_command", new_callable=AsyncMock) as mock_execute:
+        mock_execute.return_value = "OK"
+        await client.execute_command("PING")
+
+    # Assert
+    mock_metrics.record_pool_stats.assert_called_with(pool_size=2, pool_checked_out=1)
+
+    # Cleanup
+    await pool.disconnect()
 
 
 @pytest.mark.asyncio
