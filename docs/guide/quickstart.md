@@ -18,14 +18,17 @@ pip install redis-client-kit[settings]
 
 ### Async Client
 
+`BaseRedisSettings` is grouped: connection, pool, retry, SSL and response options each
+go in as their own model, and `key_prefix` is required.
+
 ```python
 from redis_client_kit import create_async_redis_client
-from redis_client_kit.settings import BaseRedisSettings
+from redis_client_kit.settings import BaseRedisSettings, RedisConnectionSettings
 
 # Configure
 settings = BaseRedisSettings(
-    host="localhost",
-    port=6379,
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(host="localhost", port=6379),
 )
 
 # Create client
@@ -44,9 +47,12 @@ await client.aclose()
 
 ```python
 from redis_client_kit.sync import create_redis_client
-from redis_client_kit.settings import BaseRedisSettings
+from redis_client_kit.settings import BaseRedisSettings, RedisConnectionSettings
 
-settings = BaseRedisSettings(host="localhost", port=6379)
+settings = BaseRedisSettings(
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(host="localhost", port=6379),
+)
 client = create_redis_client(settings)
 
 client.set("key", "value")
@@ -61,10 +67,12 @@ client.close()
 By default, Redis returns bytes. Enable `decode_responses` to get strings:
 
 ```python
+from redis_client_kit.settings import RedisResponseSettings
+
 settings = BaseRedisSettings(
-    host="localhost",
-    port=6379,
-    decode_responses=True,  # Return strings instead of bytes
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(host="localhost", port=6379),
+    response=RedisResponseSettings(decode_responses=True),  # strings instead of bytes
 )
 
 client = create_async_redis_client(settings)
@@ -125,11 +133,15 @@ async with redis_client(settings) as client:
 Connection pooling is enabled by default:
 
 ```python
+from redis_client_kit.settings import RedisPoolSettings
+
 settings = BaseRedisSettings(
-    host="localhost",
-    port=6379,
-    max_connections=20,  # Pool size
-    socket_timeout=5.0,   # Socket timeout in seconds
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(host="localhost", port=6379),
+    pool=RedisPoolSettings(
+        max_connections=20,  # Pool size
+        socket_timeout=5.0,  # Socket timeout in seconds
+    ),
 )
 
 client = create_async_redis_client(settings)
@@ -200,4 +212,4 @@ top = await client.zrange("scores", 0, -1, withscores=True)
 
 - [Configuration Guide](configuration.md) — Learn about all settings
 - [Advanced Usage](advanced.md) — Clusters, SSL, metrics
-- [API Reference](../reference/) — Complete API documentation
+- [API Reference](../reference/index.md) — Complete API documentation

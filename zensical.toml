@@ -1,6 +1,6 @@
 [project]
 site_name = "redis-client-kit"
-site_description = "Redis client with optional Pydantic and OpenTelemetry support"
+site_description = "Redis client with optional Pydantic, Prometheus, and Dishka support"
 site_author = "Alex Shalaev"
 repo_name = "bedrock-python/redis-client-kit"
 repo_url = "https://github.com/bedrock-python/redis-client-kit"
