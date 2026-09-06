@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document covers everything you
 ```bash
 git clone https://github.com/bedrock-python/redis-client-kit.git
 cd redis-client-kit
-uv sync --group dev
+uv sync --all-extras --group dev
 uv run pre-commit install --hook-type commit-msg
 ```
 

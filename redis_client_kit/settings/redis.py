@@ -116,4 +116,12 @@ class BaseRedisSettings(BaseSettings):
         return self
 
 
-__all__ = ["BaseRedisSettings"]
+__all__ = [
+    "BaseRedisSettings",
+    "RedisClusterSettings",
+    "RedisConnectionSettings",
+    "RedisPoolSettings",
+    "RedisResponseSettings",
+    "RedisRetrySettings",
+    "RedisSSLSettings",
+]
