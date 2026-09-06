@@ -283,7 +283,7 @@ registers:
 | Argument | Default | Effect |
 |---|---|---|
 | `check_health_on_startup` | `True` | pings Redis before yielding the client, and raises when it does not answer; `False` registers the factory that yields immediately |
-| `provide_default_metrics` | `True` | provides `RedisMetricsProtocol \| None` as `None` so a container without metrics resolves; `False` leaves that type to your own provider |
+| `provide_default_metrics` | `True` | provides `RedisMetricsProtocol | None` as `None` so a container without metrics resolves; `False` leaves that type to your own provider |
 
 See rules 15 to 17.
 
