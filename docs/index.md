@@ -1,11 +1,11 @@
 # redis-client-kit
 
-Production-ready Redis client library for Python with optional Pydantic settings, OpenTelemetry instrumentation, and Dishka dependency injection support.
+Production-ready Redis client library for Python with optional Pydantic settings, Prometheus metrics, and Dishka dependency injection support.
 
 ## Why redis-client-kit?
 
-- **Zero Dependencies** — Core library only depends on `redis>=7.1.0`
-- **Optional Features** — Add Pydantic, OpenTelemetry, or Dishka only when you need them
+- **Zero Dependencies** — Core library only depends on `redis>=4.5.0,<9.0.0`
+- **Optional Features** — Add Pydantic, Prometheus, or Dishka only when you need them
 - **Zero Overhead** — Plain redis-py clients when metrics aren't provided
 - **Production Ready** — Battle-tested with 90%+ test coverage
 - **Type Safe** — Full type hints with protocols for flexibility
@@ -50,19 +50,23 @@ pip install redis-client-kit[providers]
 pip install redis-client-kit[all]
 ```
 
-**Requirements:** Python 3.11+
+**Requirements:** Python 3.10+
 
 ## Quick Example
 
 ```python
 from redis_client_kit import create_async_redis_client
-from redis_client_kit.settings import BaseRedisSettings
+from redis_client_kit.settings import (
+    BaseRedisSettings,
+    RedisConnectionSettings,
+    RedisResponseSettings,
+)
 
-# Configure
+# Configure: settings are grouped, and key_prefix is required
 settings = BaseRedisSettings(
-    host="localhost",
-    port=6379,
-    decode_responses=True,
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(host="localhost", port=6379),
+    response=RedisResponseSettings(decode_responses=True),
 )
 
 # Create client
@@ -90,7 +94,7 @@ redis-client-kit follows a layered architecture:
 
 ```
 ┌─────────────────────────────────────────┐
-│  Optional Modules (settings, etc.)      │  [settings], [instrumentation], [providers]
+│  Optional Modules (settings, etc.)      │  [settings], [metrics], [providers]
 ├─────────────────────────────────────────┤
 │  Factory Functions & Lifecycle          │  create_*, check_*, close_*
 ├─────────────────────────────────────────┤

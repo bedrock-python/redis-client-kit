@@ -214,6 +214,58 @@ def test__instrumented_redis_cluster__runtime_error_handler_closed__converts_to_
             client.execute_command("SET", "key", "val")
 
 
+def test__instrumented_redis__runtime_error_handler_closed__records_error_metrics(
+    mock_metrics: MagicMock,
+) -> None:
+    # Arrange
+    client = InstrumentedRedis(metrics=mock_metrics)
+
+    # Act
+    with patch("redis.Redis.execute_command") as mock_execute:
+        mock_execute.side_effect = RuntimeError("the handler is closed")
+        with pytest.raises(RedisConnectionError):
+            client.execute_command("SET", "key", "val")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="ConnectionError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
+def test__instrumented_redis_cluster__runtime_error_handler_closed__records_error_metrics(
+    mock_metrics: MagicMock,
+) -> None:
+    # Arrange
+    with patch("redis.cluster.RedisCluster.__init__", return_value=None):
+        client = InstrumentedRedisCluster(metrics=mock_metrics, host="localhost", port=6379)
+
+    # Act
+    with patch("redis.cluster.RedisCluster.execute_command") as mock_execute:
+        mock_execute.side_effect = RuntimeError("the handler is closed")
+        with pytest.raises(RedisConnectionError):
+            client.execute_command("SET", "key", "val")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="ConnectionError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
+def test__instrumented_redis__other_runtime_error__records_error_metrics(
+    mock_metrics: MagicMock,
+) -> None:
+    # Arrange
+    client = InstrumentedRedis(metrics=mock_metrics)
+
+    # Act
+    with patch("redis.Redis.execute_command") as mock_execute:
+        mock_execute.side_effect = RuntimeError("some other error")
+        with pytest.raises(RuntimeError):
+            client.execute_command("SET", "key", "val")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="RuntimeError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
 def test__instrumented_redis_cluster__record_error_exception__logs_and_reraises_original(
     mock_metrics: MagicMock,
 ) -> None:

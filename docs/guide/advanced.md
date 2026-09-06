@@ -117,6 +117,7 @@ from dishka import make_async_container, Provider, Scope, provide
 from redis_client_kit import AsyncRedisClient
 from redis_client_kit.providers import AsyncRedisProvider
 from redis_client_kit.config import RedisSettingsProtocol
+from redis_client_kit.settings import BaseRedisSettings, RedisConnectionSettings
 
 class SettingsProvider(Provider):
     scope = Scope.APP
@@ -124,8 +125,8 @@ class SettingsProvider(Provider):
     @provide
     def get_redis_settings(self) -> RedisSettingsProtocol:
         return BaseRedisSettings(
-            host="localhost",
-            port=6379,
+            key_prefix="myapp",
+            connection=RedisConnectionSettings(host="localhost", port=6379),
         )
 
 # Create container
@@ -140,6 +141,12 @@ async with container() as ctx:
     await redis_client.set("key", "value")
 ```
 
+`AsyncRedisProvider()` verifies the connection before it yields the client and raises
+`ConnectionError` when Redis stays unreachable, so the container fails to start rather
+than handing out a client that cannot answer. Pass
+`AsyncRedisProvider(check_health_on_startup=False)` for the faster startup that does not
+contact Redis at all.
+
 ### With Metrics
 
 ```python
@@ -149,13 +156,28 @@ class MetricsProvider(Provider):
     scope = Scope.APP
     
     @provide
-    def get_redis_metrics(self) -> RedisMetricsProtocol | None:
+    def get_redis_metrics(self) -> RedisMetricsProtocol | None:  # this exact annotation
         return PrometheusRedisMetrics()
 
 container = make_async_container(
     AsyncRedisProvider(),
     SettingsProvider(),
     MetricsProvider(),
+)
+```
+
+The annotation has to be exactly `RedisMetricsProtocol | None`; plain
+`RedisMetricsProtocol` is a different key and the provider will not see it.
+
+`AsyncRedisProvider` also provides `RedisMetricsProtocol | None` as `None` so a container
+without a metrics provider still resolves, and in dishka the last provider to claim a type
+wins. Register `AsyncRedisProvider()` first, as above, or turn its default off:
+
+```python
+container = make_async_container(
+    MetricsProvider(),
+    AsyncRedisProvider(provide_default_metrics=False),
+    SettingsProvider(),
 )
 ```
 
@@ -170,8 +192,8 @@ container = make_async_container(
 ```python
 # Provider automatically:
 # 1. Creates client
-# 2. Retries connection (max 3 attempts)
-# 3. Checks health
+# 2. Pings Redis, retrying up to 3 times with exponential backoff
+# 3. Raises ConnectionError if it never answers
 # 4. Yields client
 # 5. Closes safely on exit
 
@@ -185,21 +207,27 @@ async with container() as ctx:
 ### Cluster Configuration
 
 ```python
-from redis_client_kit.settings import BaseRedisSettings
+from redis_client_kit.settings import BaseRedisSettings, RedisClusterSettings
 
 settings = BaseRedisSettings(
-    cluster_mode=True,
-    cluster_nodes=[
-        "node1.example.com:6379",
-        "node2.example.com:6379",
-        "node3.example.com:6379",
-    ],
-    require_full_coverage=True,    # Fail if not all slots covered
-    read_from_replicas=False,      # Read from replicas for better perf
+    key_prefix="myapp",
+    cluster=RedisClusterSettings(
+        enabled=True,
+        nodes=[
+            "node1.example.com:6379",
+            "node2.example.com:6379",
+            "node3.example.com:6379",
+        ],
+        require_full_coverage=True,    # Fail if not all slots covered
+        read_from_replicas=False,      # Read from replicas for better perf
+    ),
 )
 
 client = create_async_redis_client(settings)
 ```
+
+Every node string needs an explicit port; `node1.example.com` and `redis://node1` raise
+`ValueError` when the factory parses them.
 
 ### Cluster Health Checks
 
@@ -218,9 +246,12 @@ Enable reading from replicas for read-heavy workloads:
 
 ```python
 settings = BaseRedisSettings(
-    cluster_mode=True,
-    cluster_nodes=["..."],
-    read_from_replicas=True,  # Distribute reads across replicas
+    key_prefix="myapp",
+    cluster=RedisClusterSettings(
+        enabled=True,
+        nodes=["node1.example.com:6379"],
+        read_from_replicas=True,  # Distribute reads across replicas
+    ),
 )
 ```
 
@@ -231,19 +262,22 @@ settings = BaseRedisSettings(
 ```python
 from pathlib import Path
 
+from redis_client_kit.settings import RedisConnectionSettings, RedisSSLSettings
+
 settings = BaseRedisSettings(
-    host="redis.prod.example.com",
-    port=6380,  # Secure port
-    
-    # TLS configuration
-    ssl=True,
-    ssl_cert_reqs="required",
-    ssl_ca_certs=str(Path("/certs/ca.pem")),
-    ssl_certfile=str(Path("/certs/client-cert.pem")),
-    ssl_keyfile=str(Path("/certs/client-key.pem")),
-    
-    # Password authentication
-    password="secret-password",
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(
+        host="redis.prod.example.com",
+        port=6380,                     # Secure port
+        password="secret-password",    # Password authentication
+    ),
+    ssl=RedisSSLSettings(
+        enabled=True,
+        cert_reqs="required",
+        ca_certs=str(Path("/certs/ca.pem")),
+        certfile=str(Path("/certs/client-cert.pem")),
+        keyfile=str(Path("/certs/client-key.pem")),
+    ),
 )
 
 client = create_async_redis_client(settings)
@@ -256,14 +290,17 @@ redis-client-kit validates PEM files on startup:
 ```python
 # Validates PEM format and base64 content
 settings = BaseRedisSettings(
-    ssl=True,
-    ssl_ca_certs="/path/to/ca.pem",  # Must be valid PEM
+    key_prefix="myapp",
+    ssl=RedisSSLSettings(
+        enabled=True,
+        cert_reqs="required",            # required once SSL is enabled
+        ca_certs="/path/to/ca.pem",      # Must be valid PEM
+    ),
 )
 
-# Raises ValueError if invalid:
-# - Invalid PEM format
-# - Invalid base64 content
-# - File not found
+# create_async_redis_client then raises:
+# - ValueError on an invalid PEM format or invalid base64 content
+# - FileNotFoundError on a missing file
 ```
 
 ## Connection Resilience
@@ -271,11 +308,16 @@ settings = BaseRedisSettings(
 ### Retry Logic
 
 ```python
+from redis_client_kit.settings import RedisRetrySettings
+
 settings = BaseRedisSettings(
-    retry_enabled=True,
-    retry_max_attempts=5,
-    retry_backoff_base=0.2,
-    retry_backoff_cap=2.0,
+    key_prefix="myapp",
+    retry=RedisRetrySettings(
+        enabled=True,
+        max_attempts=5,     # 0, the default, retries nothing
+        backoff_base=0.2,
+        backoff_cap=2.0,
+    ),
 )
 
 # Retries with exponential backoff:
@@ -289,16 +331,23 @@ settings = BaseRedisSettings(
 ### Connection Pool Tuning
 
 ```python
+import socket
+
+from redis_client_kit.settings import RedisPoolSettings
+
 settings = BaseRedisSettings(
-    max_connections=50,              # Pool size
-    socket_timeout=5.0,               # Command timeout
-    socket_connect_timeout=2.0,       # Connection timeout
-    socket_keepalive=True,            # TCP keepalive
-    socket_keepalive_options={        # TCP settings
-        socket.TCP_KEEPIDLE: 1,
-        socket.TCP_KEEPINTVL: 1,
-        socket.TCP_KEEPCNT: 3,
-    },
+    key_prefix="myapp",
+    pool=RedisPoolSettings(
+        max_connections=50,               # Pool size
+        socket_timeout=5.0,               # Command timeout
+        socket_connect_timeout=2.0,       # Connection timeout
+        socket_keepalive=True,            # TCP keepalive
+        socket_keepalive_options={        # TCP settings
+            socket.TCP_KEEPIDLE: 1,
+            socket.TCP_KEEPINTVL: 1,
+            socket.TCP_KEEPCNT: 3,
+        },
+    ),
 )
 ```
 
@@ -306,14 +355,18 @@ settings = BaseRedisSettings(
 
 ```python
 settings = BaseRedisSettings(
+    key_prefix="myapp",
     health_check_interval=30,  # Ping every 30 seconds
 )
 
-# Set to 0 to disable:
+# Set to 0 or None to disable:
 settings = BaseRedisSettings(
+    key_prefix="myapp",
     health_check_interval=0,  # No health checks
 )
 ```
+
+This is redis-py's per-connection ping interval, not the `check_*_redis_health` function.
 
 ## Error Handling
 
@@ -397,7 +450,8 @@ async with client.pipeline() as pipe:
 ```python
 # Decode responses only when needed
 settings = BaseRedisSettings(
-    decode_responses=False,  # Return bytes (faster)
+    key_prefix="myapp",
+    response=RedisResponseSettings(decode_responses=False),  # Return bytes (faster)
 )
 
 # Manual decoding when needed
@@ -445,21 +499,23 @@ logging.getLogger("redis_client_kit").setLevel(logging.DEBUG)
 ### Test Configuration
 
 ```python
-class TestSettings(BaseRedisSettings):
-    host: str = "localhost"
-    port: int = 6380  # Different port
-    db: int = 15       # High DB number
-    
-    socket_timeout: float = 1.0
-    retry_enabled: bool = False  # Fail fast in tests
-    
-    decode_responses: bool = True
+def test_settings() -> BaseRedisSettings:
+    return BaseRedisSettings(
+        key_prefix="test",
+        connection=RedisConnectionSettings(
+            host="localhost",
+            port=6380,  # Different port
+            db=15,      # High DB number
+        ),
+        pool=RedisPoolSettings(socket_timeout=1.0),
+        retry=RedisRetrySettings(enabled=False),  # Fail fast in tests
+        response=RedisResponseSettings(decode_responses=True),
+    )
 
 # Use in tests
 @pytest.fixture
 async def redis_client():
-    settings = TestSettings()
-    client = create_async_redis_client(settings)
+    client = create_async_redis_client(test_settings())
     yield client
     await client.flushdb()  # Clean up
     await client.aclose()
@@ -478,8 +534,11 @@ def redis_container():
 @pytest.fixture
 async def redis_client(redis_container):
     settings = BaseRedisSettings(
-        host=redis_container.get_container_host_ip(),
-        port=int(redis_container.get_exposed_port(6379)),
+        key_prefix="test",
+        connection=RedisConnectionSettings(
+            host=redis_container.get_container_host_ip(),
+            port=int(redis_container.get_exposed_port(6379)),
+        ),
     )
     client = create_async_redis_client(settings)
     yield client
@@ -489,5 +548,5 @@ async def redis_client(redis_container):
 ## Next Steps
 
 - [Configuration Guide](configuration.md) — Complete settings reference
-- [API Reference](../reference/) — Full API documentation
+- [API Reference](../reference/index.md) — Full API documentation
 - [GitHub Repository](https://github.com/bedrock-python/redis-client-kit) — Source code and issues

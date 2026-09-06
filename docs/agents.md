@@ -225,7 +225,7 @@ The rest lives one import deeper.
 | `redis_client_kit.utils` | — | the three exported helpers, plus `mask_redis_kwargs(kwargs)` for logging |
 | `redis_client_kit.settings` | `settings` | `BaseRedisSettings`, `RedisConnectionSettings`, `RedisClusterSettings`, `RedisPoolSettings`, `RedisRetrySettings`, `RedisSSLSettings`, `RedisResponseSettings` |
 | `redis_client_kit.metrics` | `metrics` | `RedisMetrics`, `REDIS_COMMAND_DURATION_BUCKETS` |
-| `redis_client_kit.providers` | `providers` | `AsyncRedisProvider` |
+| `redis_client_kit.providers` | `providers` | `AsyncRedisProvider(check_health_on_startup=True, provide_default_metrics=True)` |
 
 Each optional module raises `ImportError` at import time when its extra is missing, naming
 the extra. The root package imports none of them.
@@ -276,10 +276,16 @@ container = make_async_container(AsyncRedisProvider(), AppProvider())   # this o
 client = await container.get(AsyncRedisClient)
 ```
 
-`AsyncRedisProvider` is `Scope.APP`, provides the client as an `AsyncIterator` so the
-container closes it on teardown, and also provides `RedisMetricsProtocol | None` as `None`
-so a container without metrics still resolves. Both of those facts have consequences —
-see rules 15 to 17.
+`AsyncRedisProvider` is `Scope.APP` and provides the client as an `AsyncIterator`, so the
+container closes it on teardown. Two keyword-only constructor arguments decide what it
+registers:
+
+| Argument | Default | Effect |
+|---|---|---|
+| `check_health_on_startup` | `True` | pings Redis before yielding the client, and raises when it does not answer; `False` registers the factory that yields immediately |
+| `provide_default_metrics` | `True` | provides `RedisMetricsProtocol | None` as `None` so a container without metrics resolves; `False` leaves that type to your own provider |
+
+See rules 15 to 17.
 
 ## Rules that hold or break the code
 
@@ -331,29 +337,38 @@ see rules 15 to 17.
     pydantic, prometheus-client or dishka; `from redis_client_kit.settings import …`
     raises `ImportError` naming the extra when it is missing. Do not guard the root
     import.
-15. **Register `AsyncRedisProvider()` before your own metrics provider.** It provides a
-    default `RedisMetricsProtocol | None` of `None`, and in Dishka the last provider to
-    claim a type wins — put it second and your metrics are silently dropped, leaving an
-    uninstrumented client. The annotation on your factory must be exactly
+15. **Register `AsyncRedisProvider()` before your own metrics provider, or turn its
+    default off.** It provides a default `RedisMetricsProtocol | None` of `None`, and in
+    Dishka the last provider to claim a type wins — put it second and your metrics are
+    silently dropped, leaving an uninstrumented client.
+    `AsyncRedisProvider(provide_default_metrics=False)` registers no default, so order
+    stops mattering. Either way the annotation on your factory must be exactly
     `RedisMetricsProtocol | None`; `RedisMetricsProtocol` is a different key.
-16. **`AsyncRedisProvider.get_redis()` is not reachable through a container.** Both it and
-    `get_redis_with_health_check()` provide the same type, so only one survives
-    registration — the health-check one. There is no supported way to ask for the other.
-17. **The provider's startup health check does not fail startup.** It retries
-    `check_async_redis_health`, which returns `False` instead of raising, so the retry loop
-    falls straight through and the container yields a client that cannot reach Redis. Call
-    `check_async_redis_health` yourself and act on the result if startup must fail.
+16. **The provider registers one client factory, chosen at construction.**
+    `AsyncRedisProvider()` registers `get_redis_with_health_check()`;
+    `AsyncRedisProvider(check_health_on_startup=False)` registers `get_redis()` instead.
+    They provide the same type, so registering both would leave only the second — the
+    constructor picks one.
+17. **The provider's startup health check fails startup.** It pings up to three times
+    with exponential backoff — 1 s, then 2 s — and raises `ConnectionError` when Redis
+    never answers, closing the client it built. Resolving `AsyncRedisClient` is what
+    triggers it, so that is where the error surfaces. Use
+    `AsyncRedisProvider(check_health_on_startup=False)` when a missing Redis must not
+    block startup.
 18. **A `RedisMetrics` instance owns global Prometheus names.** Building a second one with
     the same prefix raises a duplicate-timeseries `ValueError` from the default registry.
     Build one per process and inject it.
-19. **Instrumented pool gauges are partial.** `redis_pool_size` is always `0` on the async
-    client — it reads a pool attribute `redis-py` 8 does not have — and cluster clients of
-    either flavour record no pool statistics at all. Command counts, durations and error
-    counts are recorded everywhere.
-20. **A `RuntimeError` translated into `ConnectionError` is counted as a success.** The
-    uvloop "transport is closed" path converts the error before the metrics branch is
-    reached, so it lands in `redis_commands_total{status="success"}` and never in
-    `redis_connection_errors_total`. Do not alert on the absence of that counter.
+19. **Cluster clients record no pool statistics.** Single-node clients, async and sync,
+    report `redis_pool_size` and `redis_pool_checked_out` from the pool's own containers
+    before every command; `InstrumentedRedisCluster` reports neither. Command counts,
+    durations and error counts are recorded everywhere.
+20. **A uvloop closed-transport `RuntimeError` reaches you as `redis-py`'s
+    `ConnectionError`.** `execute_command` translates it so `redis-py` can retry or
+    reconnect, and records it under the type you catch:
+    `redis_commands_total{status="error"}` and
+    `redis_connection_errors_total{error_type="ConnectionError"}`. Catch
+    `redis.exceptions.ConnectionError`, not `RuntimeError`. Any other `RuntimeError` is
+    re-raised unchanged and counted under `RuntimeError`.
 
 ## Common mistakes
 
@@ -432,6 +447,7 @@ Python, by Pydantic or by `redis-py`.
 | `pydantic.ValidationError` from `BaseRedisSettings` | a field out of range, an unknown keyword, a missing `key_prefix`, or one of the validator's three checks |
 | `AttributeError` from the factory | a settings object missing an attribute the protocols name |
 | `redis.exceptions.*` from the client | everything at run time: `ConnectionError`, `TimeoutError`, `ResponseError`, `RedisClusterException`, `ClusterDownError` and the rest of `redis-py`'s tree, all under `RedisError` |
+| builtin `ConnectionError` from `AsyncRedisProvider` | Redis did not answer within the startup health check's three attempts — Python's `ConnectionError`, not `redis.exceptions.ConnectionError`, so it is not caught by `except RedisError` |
 | `ImportError` from an optional submodule | the extra is not installed; the message names it |
 
 `check_*_redis_health` and `close_*_redis_client` convert `redis-py`'s errors into a
@@ -449,10 +465,3 @@ Fetch a page when the task is the one named beside it.
 | [Advanced](guide/advanced.md) | writing a `RedisMetricsProtocol`, Dishka wiring, cluster and TLS deployment notes |
 | [API reference](reference/index.md) | an exact signature or docstring — HTML only, see above |
 | [Changelog](changelog.md) | what changed between versions |
-
-One caveat about the three guide pages and the home page: their `BaseRedisSettings(...)`
-calls predate the grouped settings model and pass flat keywords — `host=`, `retry_enabled=`,
-`cluster_mode=`, `ssl=True` — that the model now rejects with `extra_forbidden`. The
-protocols, the factory arguments, the metric names and the prose around those snippets are
-current; the constructor calls are not. Take the settings shapes from this page or from
-`README.md`, and read those pages for the parts they are still the only source of.

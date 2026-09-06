@@ -140,8 +140,6 @@ omit = [
     "*/test_*.py",
     "*/_deps.py",
     "redis_client_kit/metrics/redis.py",
-    "redis_client_kit/providers/redis.py",
-    "redis_client_kit/providers/utils.py",
 ]
 
 [tool.coverage.report]

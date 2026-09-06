@@ -15,6 +15,26 @@ from ..protocols import RedisMetricsProtocol
 logger = logging.getLogger(__name__)
 
 
+def _translate_closed_transport(error: RuntimeError) -> RedisConnectionError | None:
+    """Translate a closed-transport RuntimeError into a Redis ConnectionError.
+
+    redis-py only handles its own ConnectionError (retry or reconnect), so the error
+    is translated. Returns None for any other RuntimeError.
+    """
+    message = str(error).lower()
+    if "the handler is closed" in message or "transport is closed" in message:
+        return RedisConnectionError(str(error))
+    return None
+
+
+def _record_error(metrics: RedisMetricsProtocol, error: BaseException) -> None:
+    """Record an error without letting the metrics backend break the command."""
+    try:
+        metrics.record_error(error_type=type(error).__name__)
+    except Exception:
+        logger.exception("Failed to record Redis error metrics")
+
+
 class InstrumentedRedis(Redis):
     """Redis client with Prometheus metrics collection."""
 
@@ -46,17 +66,15 @@ class InstrumentedRedis(Redis):
         try:
             return super().execute_command(*args, **options)
         except RuntimeError as e:
-            # Handle closed connection errors
-            if "the handler is closed" in str(e).lower() or "transport is closed" in str(e).lower():
-                raise RedisConnectionError(str(e)) from e
+            status = "error"
+            translated = _translate_closed_transport(e)
+            _record_error(self._metrics, translated or e)
+            if translated is not None:
+                raise translated from e
             raise
         except Exception as e:
             status = "error"
-            error_type = type(e).__name__
-            try:
-                self._metrics.record_error(error_type=error_type)
-            except Exception:
-                logger.exception("Failed to record Redis error metrics")
+            _record_error(self._metrics, e)
             raise
         finally:
             duration = time.perf_counter() - start
@@ -88,17 +106,15 @@ class InstrumentedRedisCluster(RedisCluster):
         try:
             return super().execute_command(*args, **options)
         except RuntimeError as e:
-            # Handle closed connection errors
-            if "the handler is closed" in str(e).lower() or "transport is closed" in str(e).lower():
-                raise RedisConnectionError(str(e)) from e
+            status = "error"
+            translated = _translate_closed_transport(e)
+            _record_error(self._metrics, translated or e)
+            if translated is not None:
+                raise translated from e
             raise
         except Exception as e:
             status = "error"
-            error_type = type(e).__name__
-            try:
-                self._metrics.record_error(error_type=error_type)
-            except Exception:
-                logger.exception("Failed to record Redis error metrics")
+            _record_error(self._metrics, e)
             raise
         finally:
             duration = time.perf_counter() - start

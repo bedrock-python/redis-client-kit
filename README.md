@@ -303,7 +303,7 @@ Full documentation: [bedrock-python.github.io/redis-client-kit](https://bedrock-
 - [Quick Start Guide](https://bedrock-python.github.io/redis-client-kit/guide/quickstart/)
 - [Configuration Guide](https://bedrock-python.github.io/redis-client-kit/guide/configuration/)
 - [Advanced Usage](https://bedrock-python.github.io/redis-client-kit/guide/advanced/)
-- [API Reference](https://bedrock-python.github.io/redis-client-kit/reference/api/)
+- [API Reference](https://bedrock-python.github.io/redis-client-kit/reference/)
 
 ## Contributing
 

@@ -6,17 +6,24 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def _unload_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the providers package from sys.modules for the duration of one test.
+
+    monkeypatch restores every entry afterwards, so the modules the rest of the
+    suite already imported keep pointing at the real ones.
+    """
+    for module in [key for key in sys.modules if key.startswith("redis_client_kit.providers")]:
+        monkeypatch.delitem(sys.modules, module)
+
+
 def test__providers_init__dishka_not_installed__raises_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # Arrange
-    # Remove redis_client_kit.providers from modules if already imported
-    modules_to_remove = [key for key in sys.modules if key.startswith("redis_client_kit.providers")]
-    for module in modules_to_remove:
-        del sys.modules[module]
+    _unload_providers(monkeypatch)
 
     # Mock _deps to simulate dishka not installed
     mock_deps = MagicMock()
     mock_deps.HAS_DISHKA = False
-    sys.modules["redis_client_kit.providers._deps"] = mock_deps
+    monkeypatch.setitem(sys.modules, "redis_client_kit.providers._deps", mock_deps)
 
     # Act & Assert
     with pytest.raises(ImportError, match="dishka not installed"):
@@ -25,18 +32,15 @@ def test__providers_init__dishka_not_installed__raises_import_error(monkeypatch:
 
 def test__providers_init__dishka_installed__imports_successfully(monkeypatch: pytest.MonkeyPatch) -> None:
     # Arrange
-    # Remove redis_client_kit.providers from modules if already imported
-    modules_to_remove = [key for key in sys.modules if key.startswith("redis_client_kit.providers")]
-    for module in modules_to_remove:
-        del sys.modules[module]
+    _unload_providers(monkeypatch)
 
     # Mock _deps to simulate dishka installed
     mock_deps = MagicMock()
     mock_deps.HAS_DISHKA = True
     mock_deps.AsyncRedisProvider = MagicMock
-    sys.modules["redis_client_kit.providers._deps"] = mock_deps
-    sys.modules["redis_client_kit.providers.redis"] = mock_deps
-    sys.modules["redis_client_kit.providers.utils"] = mock_deps
+    monkeypatch.setitem(sys.modules, "redis_client_kit.providers._deps", mock_deps)
+    monkeypatch.setitem(sys.modules, "redis_client_kit.providers.redis", mock_deps)
+    monkeypatch.setitem(sys.modules, "redis_client_kit.providers.utils", mock_deps)
 
     # Act
     import redis_client_kit.providers  # noqa: F401, PLC0415

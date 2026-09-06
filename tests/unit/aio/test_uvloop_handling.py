@@ -43,6 +43,68 @@ async def test__instrumented_redis_cluster__uvloop_handler_closed_error__transla
 
 
 @pytest.mark.asyncio
+async def test__instrumented_redis__uvloop_handler_closed_error__records_error_metrics() -> None:
+    # Arrange
+    mock_metrics = MagicMock()
+    client = InstrumentedRedis(host="localhost", port=6379, metrics=mock_metrics)
+    msg = (
+        "unable to perform operation on <TCPTransport closed=True reading=False 0x63001cea35e0>; the handler is closed"
+    )
+
+    # Act
+    with (
+        patch("redis.asyncio.Redis.execute_command", side_effect=RuntimeError(msg)),
+        pytest.raises(RedisConnectionError),
+    ):
+        await client.execute_command("GET", "key")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="ConnectionError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test__instrumented_redis_cluster__uvloop_handler_closed_error__records_error_metrics() -> None:
+    # Arrange
+    mock_metrics = MagicMock()
+    msg = (
+        "unable to perform operation on <TCPTransport closed=True reading=False 0x63001cea35e0>; the handler is closed"
+    )
+
+    # Act
+    with patch("redis.asyncio.cluster.RedisCluster.__init__", return_value=None):
+        client = InstrumentedRedisCluster(metrics=mock_metrics)
+
+        with (
+            patch("redis.asyncio.cluster.RedisCluster.execute_command", side_effect=RuntimeError(msg)),
+            pytest.raises(RedisConnectionError),
+        ):
+            await client.execute_command("GET", "key")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="ConnectionError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test__instrumented_redis__other_runtime_error__records_error_metrics() -> None:
+    # Arrange
+    mock_metrics = MagicMock()
+    client = InstrumentedRedis(host="localhost", port=6379, metrics=mock_metrics)
+
+    # Act
+    with (
+        patch("redis.asyncio.Redis.execute_command", side_effect=RuntimeError("some other error")),
+        pytest.raises(RuntimeError),
+    ):
+        await client.execute_command("GET", "key")
+
+    # Assert
+    mock_metrics.record_error.assert_called_once_with(error_type="RuntimeError")
+    assert mock_metrics.record_command.call_args.kwargs["status"] == "error"
+
+
+@pytest.mark.asyncio
 async def test__instrumented_redis__other_runtime_error__preserves_original_exception() -> None:
     # Arrange
     mock_metrics = MagicMock()

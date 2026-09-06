@@ -13,25 +13,44 @@ async def retry_async_connection(
     max_attempts: int = 3,
     backoff_base: float = 1.0,
 ) -> None:
-    """Retry async connection with exponential backoff."""
+    """Retry async connection with exponential backoff.
+
+    An attempt fails when connect_func raises or returns a falsy value; both are
+    retried with the same backoff.
+
+    Args:
+        connect_func: Callable returning True once the service is reachable
+        service_name: Name used in log messages and in the raised error
+        max_attempts: Number of attempts before giving up
+        backoff_base: Base of the exponential backoff in seconds
+
+    Raises:
+        ConnectionError: If no attempt reported success and none of them raised.
+        Exception: The error raised by the last attempt, if it raised one.
+    """
     for attempt in range(1, max_attempts + 1):
+        error: Exception
         try:
             if await connect_func():
                 logger.info("%s connected successfully", service_name)
                 return
+            error = ConnectionError(f"{service_name} did not report a healthy connection")
         except Exception as e:
-            if attempt == max_attempts:
-                raise
-            wait_time = backoff_base * (2 ** (attempt - 1))
-            logger.warning(
-                "%s connection failed (attempt %d/%d), retrying in %ss: %s",
-                service_name,
-                attempt,
-                max_attempts,
-                wait_time,
-                e,
-            )
-            await asyncio.sleep(wait_time)
+            error = e
+
+        if attempt == max_attempts:
+            raise error
+
+        wait_time = backoff_base * (2 ** (attempt - 1))
+        logger.warning(
+            "%s connection failed (attempt %d/%d), retrying in %ss: %s",
+            service_name,
+            attempt,
+            max_attempts,
+            wait_time,
+            error,
+        )
+        await asyncio.sleep(wait_time)
 
 
 async def safe_async_cleanup(
