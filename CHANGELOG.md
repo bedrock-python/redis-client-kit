@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.2...redis-client-kit-v0.1.3) (2026-09-06)
+
+
+### Bug Fixes
+
+* fail startup on an unreachable Redis, and count translated errors as errors ([#23](https://github.com/bedrock-python/redis-client-kit/issues/23)) ([38187bb](https://github.com/bedrock-python/redis-client-kit/commit/38187bb202f14e8f893e7597926f0cb3cb750b80))
+
 ## [0.1.2](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.1...redis-client-kit-v0.1.2) (2026-09-05)
 
 
