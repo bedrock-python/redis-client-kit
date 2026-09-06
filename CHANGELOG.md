@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.2...redis-client-kit-v0.1.3) (2026-09-06)
+
+
+### Documentation
+
+* org-wide security policy and code of conduct ([#16](https://github.com/bedrock-python/redis-client-kit/issues/16)) ([43e79a5](https://github.com/bedrock-python/redis-client-kit/commit/43e79a57b33bf7c9321ed53a1ec79c1adfb81497))
+
 ## [0.1.2](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.1...redis-client-kit-v0.1.2) (2026-09-05)
 
 
