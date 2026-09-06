@@ -9,6 +9,15 @@ Production-ready Redis client with optional Pydantic settings, Prometheus metric
 [![codecov](https://codecov.io/gh/bedrock-python/redis-client-kit/graph/badge.svg)](https://codecov.io/gh/bedrock-python/redis-client-kit)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://bedrock-python.github.io/redis-client-kit/)
 
+> [!TIP]
+> **Building this with an AI assistant?** Hand it
+> **[one page](https://bedrock-python.github.io/redis-client-kit/agents/)** instead of the
+> whole site: the public API of both the async and the sync side, what each extra turns on,
+> every setting with the default it actually has, the rules that break code when they are
+> broken, the mistakes models make with this API, and a map of which page to fetch for the
+> rest. Every docs page is also served as raw Markdown at its own URL, and a **Copy page**
+> button at the top of each one hands it straight to a chat window.
+
 ## Features
 
 | Feature | Included | Extra Required |
@@ -290,6 +299,7 @@ settings = BaseRedisSettings(
 
 Full documentation: [bedrock-python.github.io/redis-client-kit](https://bedrock-python.github.io/redis-client-kit/)
 
+- [For AI agents](https://bedrock-python.github.io/redis-client-kit/agents/) — the whole library on one page
 - [Quick Start Guide](https://bedrock-python.github.io/redis-client-kit/guide/quickstart/)
 - [Configuration Guide](https://bedrock-python.github.io/redis-client-kit/guide/configuration/)
 - [Advanced Usage](https://bedrock-python.github.io/redis-client-kit/guide/advanced/)
