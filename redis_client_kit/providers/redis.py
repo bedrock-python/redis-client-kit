@@ -9,7 +9,7 @@ from redis.exceptions import RedisError
 from ..aio import AsyncRedisClient, check_async_redis_health, close_async_redis_client, create_async_redis_client
 from ..config import RedisSettingsProtocol
 from ..protocols import RedisMetricsProtocol
-from ._deps import Provider, Scope, provide
+from ._deps import Provider, Scope
 from .utils import retry_async_connection, safe_async_cleanup
 
 logger = logging.getLogger(__name__)
@@ -18,17 +18,39 @@ logger = logging.getLogger(__name__)
 class AsyncRedisProvider(Provider):  # type: ignore[misc]
     """Dishka provider for Redis dependencies.
 
-    Provides two Redis client options:
-    - get_redis(): Simple client without startup health check
-    - get_redis_with_health_check(): Client with connection verification and retries
+    Provides one ``AsyncRedisClient``, chosen when the provider is constructed:
 
-    Choose get_redis() for faster startup when Redis availability is not critical.
-    Choose get_redis_with_health_check() for guaranteed connection on startup.
+    - ``AsyncRedisProvider()`` verifies the connection on startup with retries and
+      raises when Redis stays unreachable, so startup fails instead of handing out
+      a client that cannot answer.
+    - ``AsyncRedisProvider(check_health_on_startup=False)`` yields the client without
+      contacting Redis, for a faster startup when Redis availability is not critical.
+
+    It also provides ``RedisMetricsProtocol | None`` as ``None`` so a container with no
+    metrics provider still resolves. Dishka lets the last registered provider of a type
+    win, so this default overrides a metrics provider registered before it: either
+    register this provider first, or construct it with ``provide_default_metrics=False``.
     """
 
     scope = Scope.APP  # type: ignore[misc]
 
-    @provide  # type: ignore[misc]
+    def __init__(
+        self,
+        *,
+        check_health_on_startup: bool = True,
+        provide_default_metrics: bool = True,
+    ) -> None:
+        """Register the client factory, and the default metrics factory when asked to.
+
+        Args:
+            check_health_on_startup: Verify the connection before yielding the client
+            provide_default_metrics: Provide ``RedisMetricsProtocol | None`` as ``None``
+        """
+        super().__init__()
+        self.provide(self.get_redis_with_health_check if check_health_on_startup else self.get_redis)
+        if provide_default_metrics:
+            self.provide(self.get_default_metrics)
+
     async def get_redis(
         self,
         redis_settings: RedisSettingsProtocol,
@@ -57,7 +79,6 @@ class AsyncRedisProvider(Provider):  # type: ignore[misc]
                 exception_type=RedisError,
             )
 
-    @provide  # type: ignore[misc]
     async def get_redis_with_health_check(
         self,
         redis_settings: RedisSettingsProtocol,
@@ -76,14 +97,22 @@ class AsyncRedisProvider(Provider):  # type: ignore[misc]
             Configured and verified AsyncRedisClient instance
 
         Raises:
-            Exception: If connection fails after max retry attempts
+            ConnectionError: If Redis is still unreachable after the last attempt
         """
         client = create_async_redis_client(redis_settings, metrics=metrics)
 
-        await retry_async_connection(
-            connect_func=lambda: check_async_redis_health(client),
-            service_name="Redis",
-        )
+        try:
+            await retry_async_connection(
+                connect_func=lambda: check_async_redis_health(client),
+                service_name="Redis",
+            )
+        except BaseException:
+            await safe_async_cleanup(
+                cleanup_func=functools.partial(close_async_redis_client, client),
+                service_name="Redis client",
+                exception_type=RedisError,
+            )
+            raise
 
         try:
             yield client
@@ -94,7 +123,6 @@ class AsyncRedisProvider(Provider):  # type: ignore[misc]
                 exception_type=RedisError,
             )
 
-    @provide  # type: ignore[misc]
     def get_default_metrics(self) -> RedisMetricsProtocol | None:
         """Provide default None for metrics if not provided in container."""
         return None
