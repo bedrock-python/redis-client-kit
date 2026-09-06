@@ -135,7 +135,7 @@ raises `AttributeError` on the first one missing.
 | `ssl` | `RedisSSLSettings` | all defaults |
 | `response` | `RedisResponseSettings` | all defaults |
 | `key_prefix` | `str` | **required** — never read by this library |
-| `health_check_interval` | `int \| None`, `ge=0` | `30` |
+| `health_check_interval` | `int | None`, `ge=0` | `30` |
 | `metrics_enabled` | `bool` | `False` — never read by this library |
 
 | Group | Field | Default | Notes |
@@ -154,7 +154,7 @@ raises `AttributeError` on the first one missing.
 | | `socket_timeout` | `5.0` | seconds |
 | | `socket_connect_timeout` | `5.0` | seconds |
 | | `socket_keepalive` | `True` | |
-| | `socket_keepalive_options` | `None` | `dict[int, int \| bytes]` |
+| | `socket_keepalive_options` | `None` | `dict[int, int | bytes]` |
 | `RedisRetrySettings` | `enabled` | `False` | |
 | | `max_attempts` | `0` | `0` means no retry even when `enabled` |
 | | `backoff_base` | `1.0` | seconds |
@@ -199,17 +199,17 @@ Everything in this table is importable from `redis_client_kit` itself.
 
 | Name | Signature | Returns |
 |---|---|---|
-| `create_async_redis_client` | `(settings, metrics=None)` | `Redis \| RedisCluster`, instrumented when `metrics` is given |
+| `create_async_redis_client` | `(settings, metrics=None)` | `Redis | RedisCluster`, instrumented when `metrics` is given |
 | `create_redis_client` | `(settings, metrics=None)` | the sync equivalent |
 | `check_async_redis_health` | `await (client)` | `bool` — never raises |
 | `check_redis_health` | `(client)` | `bool` — never raises |
 | `close_async_redis_client` | `await (client)` | `None` — shielded, 10 s timeout, never raises |
 | `close_redis_client` | `(client)` | `None` — never raises |
 | `build_base_redis_kwargs` | `(settings)` | `dict[str, object]` of `redis-py` keyword arguments |
-| `build_redis_retry` | `(settings)` | `redis.retry.Retry \| None` |
+| `build_redis_retry` | `(settings)` | `redis.retry.Retry | None` |
 | `parse_redis_url_node` | `(node)` | `tuple[str, int]` — `ValueError` on a node with no port |
-| `AsyncRedisClient` | type alias | `redis.asyncio.Redis \| redis.asyncio.cluster.RedisCluster` |
-| `SyncRedisClient` | type alias | `redis.Redis \| redis.cluster.RedisCluster` |
+| `AsyncRedisClient` | type alias | `redis.asyncio.Redis | redis.asyncio.cluster.RedisCluster` |
+| `SyncRedisClient` | type alias | `redis.Redis | redis.cluster.RedisCluster` |
 | `RedisSettingsProtocol` | protocol | what the factory reads |
 | `RedisMetricsProtocol` | protocol | what instrumentation calls |
 | `__version__` | `str` | |
