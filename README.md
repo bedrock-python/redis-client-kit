@@ -251,6 +251,11 @@ from redis_client_kit import check_async_redis_health
 is_healthy = await check_async_redis_health(client)
 if is_healthy:
     print("Redis is ready!")
+
+# PING alone says healthy for a read-only replica and for a primary that is out of memory
+# under noeviction. write_key adds a SET <key> 1 EX 60 after the ping, for a service that
+# needs Redis for more than reads.
+is_healthy = await check_async_redis_health(client, write_key="myapp:health")
 ```
 
 ### Graceful Shutdown

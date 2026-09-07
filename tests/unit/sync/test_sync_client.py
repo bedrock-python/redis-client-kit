@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from redis.backoff import NoBackoff
+from redis.exceptions import OutOfMemoryError, ReadOnlyError
 from redis.retry import Retry
 
 from redis_client_kit.sync import (
@@ -11,6 +12,7 @@ from redis_client_kit.sync import (
     close_redis_client,
     create_redis_client,
 )
+from redis_client_kit.utils import WRITE_PROBE_TTL_S
 
 
 @pytest.mark.parametrize(
@@ -189,3 +191,79 @@ def test__check_redis_health__exception_raised__returns_false(exception: Excepti
 
     # Assert
     assert result is False
+
+
+def test__check_redis_health__no_write_key__pings_only() -> None:
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.ping.return_value = True
+
+    # Act
+    result = check_redis_health(mock_client)
+
+    # Assert
+    assert result is True
+    mock_client.set.assert_not_called()
+
+
+def test__check_redis_health__write_key__sets_it_with_a_ttl_after_the_ping() -> None:
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.ping.return_value = True
+    mock_client.set.return_value = True
+
+    # Act
+    result = check_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is True
+    mock_client.ping.assert_called_once()
+    mock_client.set.assert_called_once_with("myapp:health", "1", ex=WRITE_PROBE_TTL_S)
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        ReadOnlyError("You can't write against a read only replica."),
+        OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
+    ],
+    ids=["read-only-replica", "out-of-memory"],
+)
+def test__check_redis_health__write_refused__returns_false(exception: Exception) -> None:
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.ping.return_value = True
+    mock_client.set.side_effect = exception
+
+    # Act
+    result = check_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is False
+
+
+def test__check_redis_health__failed_ping_with_write_key__does_not_write() -> None:
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.ping.return_value = False
+
+    # Act
+    result = check_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is False
+    mock_client.set.assert_not_called()
+
+
+def test__check_redis_health__cluster_with_write_key__pings_every_node_then_writes() -> None:
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.ping.return_value = {"node1": True, "node2": True}
+    mock_client.set.return_value = True
+
+    # Act
+    result = check_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is True
+    mock_client.set.assert_called_once_with("myapp:health", "1", ex=WRITE_PROBE_TTL_S)
