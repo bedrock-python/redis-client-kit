@@ -155,7 +155,7 @@ raises `AttributeError` on the first one missing.
 | | `socket_connect_timeout` | `5.0` | seconds |
 | | `socket_keepalive` | `True` | |
 | | `socket_keepalive_options` | `None` | `dict[int, int | bytes]` |
-| `RedisRetrySettings` | `enabled` | `False` | |
+| `RedisRetrySettings` | `enabled` | `False` | off hands `redis-py` `Retry(NoBackoff(), 0)`, not nothing — rule 5 |
 | | `max_attempts` | `0` | `0` means no retry even when `enabled` |
 | | `backoff_base` | `1.0` | seconds |
 | | `backoff_cap` | `10.0` | seconds |
@@ -206,7 +206,7 @@ Everything in this table is importable from `redis_client_kit` itself.
 | `close_async_redis_client` | `await (client)` | `None` — shielded, 10 s timeout, never raises |
 | `close_redis_client` | `(client)` | `None` — never raises |
 | `build_base_redis_kwargs` | `(settings)` | `dict[str, object]` of `redis-py` keyword arguments |
-| `build_redis_retry` | `(settings)` | `redis.retry.Retry | None` |
+| `build_redis_retry` | `(settings)` | `redis.retry.Retry` — `Retry(NoBackoff(), 0)` when retries are off |
 | `parse_redis_url_node` | `(node)` | `tuple[str, int]` — `ValueError` on a node with no port |
 | `AsyncRedisClient` | type alias | `redis.asyncio.Redis | redis.asyncio.cluster.RedisCluster` |
 | `SyncRedisClient` | type alias | `redis.Redis | redis.cluster.RedisCluster` |
@@ -303,9 +303,13 @@ See rules 15 to 17.
 4. **Every cluster node string needs an explicit port.** `host:6379`, `[::1]:6379` and
    `redis://host:6379` parse; `redis://host` and `host` raise `ValueError`. The scheme is
    parsed and then ignored — `rediss://` does not enable TLS, `ssl.enabled` does.
-5. **`retry.enabled=True` on its own retries nothing.** The `Retry` object is built only
-   when `enabled` **and** `max_attempts` are both truthy, and `max_attempts` defaults to
-   `0`. With no `Retry` handed to it, `redis-py` does not retry at all.
+5. **`retry.enabled=True` on its own retries nothing, and neither does `redis-py`.** The
+   exponential `Retry` is built only when `enabled` **and** `max_attempts` are both
+   truthy, and `max_attempts` defaults to `0`. Otherwise the factory hands `redis-py`
+   `Retry(NoBackoff(), 0)` explicitly — never nothing, because `redis-py` given no
+   `Retry` retries on its own since 6.0 (three times; ten since 8.0, with jittered
+   backoff), which turns a `socket_timeout=0.5` failure into ten seconds or more. With
+   retries off, the first `ConnectionError` or `TimeoutError` is the one you get.
 6. **Retries cover connection failures, not command failures.** `redis-py`'s `Retry`
    defaults to `ConnectionError`, `TimeoutError` and `socket.timeout`; a `ResponseError`
    from a bad command is raised on the first try. The delay is

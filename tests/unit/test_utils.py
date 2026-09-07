@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from redis_client_kit.utils import (
     _validate_pem_format,
@@ -44,15 +46,17 @@ def test__parse_redis_url_node__invalid_input__raises_value_error() -> None:
         parse_redis_url_node("invalid-node")
 
 
-def test__build_redis_retry__retry_disabled__returns_none(mock_redis_settings: MagicMock) -> None:
+def test__build_redis_retry__retry_disabled__returns_zero_retries(mock_redis_settings: MagicMock) -> None:
     # Arrange
     mock_redis_settings.retry.enabled = False
 
     # Act
-    result = build_redis_retry(mock_redis_settings)
+    retry = build_redis_retry(mock_redis_settings)
 
     # Assert
-    assert result is None
+    assert isinstance(retry, Retry)
+    assert retry._retries == 0
+    assert isinstance(retry._backoff, NoBackoff)
 
 
 def test__build_redis_retry__retry_enabled__returns_retry_object(mock_redis_settings: MagicMock) -> None:
@@ -68,16 +72,18 @@ def test__build_redis_retry__retry_enabled__returns_retry_object(mock_redis_sett
     assert getattr(retry, "_retries", 0) == 5
 
 
-def test__build_redis_retry__no_max_attempts__returns_none(mock_redis_settings: MagicMock) -> None:
+def test__build_redis_retry__no_max_attempts__returns_zero_retries(mock_redis_settings: MagicMock) -> None:
     # Arrange
     mock_redis_settings.retry.enabled = True
-    mock_redis_settings.retry.max_attempts = None
+    mock_redis_settings.retry.max_attempts = 0
 
     # Act
-    result = build_redis_retry(mock_redis_settings)
+    retry = build_redis_retry(mock_redis_settings)
 
     # Assert
-    assert result is None
+    assert isinstance(retry, Retry)
+    assert retry._retries == 0
+    assert isinstance(retry._backoff, NoBackoff)
 
 
 def test__build_base_redis_kwargs__full_config__returns_all_parameters(mock_redis_settings: MagicMock) -> None:
@@ -99,7 +105,7 @@ def test__build_base_redis_kwargs__full_config__returns_all_parameters(mock_redi
     assert "retry" in kwargs
 
 
-def test__build_base_redis_kwargs__retry_disabled__excludes_retry_parameter(
+def test__build_base_redis_kwargs__retry_disabled__passes_zero_retries(
     mock_redis_settings: MagicMock,
 ) -> None:
     # Arrange
@@ -109,7 +115,10 @@ def test__build_base_redis_kwargs__retry_disabled__excludes_retry_parameter(
     kwargs = build_base_redis_kwargs(mock_redis_settings)
 
     # Assert
-    assert "retry" not in kwargs
+    retry = kwargs["retry"]
+    assert isinstance(retry, Retry)
+    assert retry._retries == 0
+    assert isinstance(retry._backoff, NoBackoff)
 
 
 def test__build_base_redis_kwargs__ssl_enabled__includes_ssl_parameters(mock_redis_settings: MagicMock) -> None:

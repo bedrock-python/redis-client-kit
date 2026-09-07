@@ -152,8 +152,14 @@ settings = BaseRedisSettings(
 )
 ```
 
-`max_attempts` defaults to `0`, and `enabled=True` on its own retries nothing: the `Retry`
-object is handed to redis-py only when both `enabled` and `max_attempts` are truthy.
+`max_attempts` defaults to `0`, and `enabled=True` on its own retries nothing: the
+exponential `Retry` is built only when both `enabled` and `max_attempts` are truthy.
+Otherwise the factory hands redis-py `Retry(NoBackoff(), 0)` rather than nothing. Given
+no `Retry`, redis-py 6.0 and later retry on their own — three times, ten since 8.0, with
+jittered backoff — so a client built to fail in `socket_timeout` seconds would take ten
+or more. Disabled means the first `ConnectionError` or `TimeoutError` is raised as is:
+with `socket_timeout=0.5`, a command against an unreachable Redis fails in about half a
+second.
 
 Retry logic uses exponential backoff:
 ```
