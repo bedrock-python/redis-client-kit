@@ -205,8 +205,8 @@ Everything in this table is importable from `redis_client_kit` itself.
 | `check_redis_health` | `(client)` | `bool` — never raises |
 | `close_async_redis_client` | `await (client)` | `None` — shielded, 10 s timeout, never raises |
 | `close_redis_client` | `(client)` | `None` — never raises |
-| `build_base_redis_kwargs` | `(settings)` | `dict[str, object]` of `redis-py` keyword arguments |
-| `build_redis_retry` | `(settings)` | `redis.retry.Retry` — `Retry(NoBackoff(), 0)` when retries are off |
+| `build_base_redis_kwargs` | `(settings, asyncio=False)` | `dict[str, object]` of `redis-py` keyword arguments; `asyncio=True` for a `redis.asyncio` client |
+| `build_redis_retry` | `(settings, asyncio=False)` | `redis.retry.Retry`, or `redis.asyncio.retry.Retry` with `asyncio=True` — `Retry(NoBackoff(), 0)` when retries are off |
 | `parse_redis_url_node` | `(node)` | `tuple[str, int]` — `ValueError` on a node with no port |
 | `AsyncRedisClient` | type alias | `redis.asyncio.Redis | redis.asyncio.cluster.RedisCluster` |
 | `SyncRedisClient` | type alias | `redis.Redis | redis.cluster.RedisCluster` |
@@ -309,7 +309,11 @@ See rules 15 to 17.
    `Retry(NoBackoff(), 0)` explicitly — never nothing, because `redis-py` given no
    `Retry` retries on its own since 6.0 (three times; ten since 8.0, with jittered
    backoff), which turns a `socket_timeout=0.5` failure into ten seconds or more. With
-   retries off, the first `ConnectionError` or `TimeoutError` is the one you get.
+   retries off, the first `ConnectionError` or `TimeoutError` is the one you get. The
+   flavour follows the client: the async factory hands `redis.asyncio.retry.Retry`, the
+   sync factory `redis.retry.Retry`, and both helpers build the sync class unless called
+   with `asyncio=True`. A sync `Retry` on a `redis.asyncio` client never retries — its
+   `call_with_retry` does not await, so the failure never reaches the loop.
 6. **Retries cover connection failures, not command failures.** `redis-py`'s `Retry`
    defaults to `ConnectionError`, `TimeoutError` and `socket.timeout`; a `ResponseError`
    from a bad command is raised on the first try. The delay is
@@ -402,6 +406,14 @@ BaseRedisSettings(
     retry=RedisRetrySettings(enabled=True, max_attempts=3, backoff_base=0.5, backoff_cap=5.0),
     cluster=RedisClusterSettings(enabled=True, nodes=["node1:6379", "node2:6379"]),
 )
+```
+
+```python
+# WRONG — a sync Retry on an async client never retries: its call_with_retry does not await
+client = redis.asyncio.Redis(**build_base_redis_kwargs(settings), host="localhost", port=6379)
+
+# RIGHT — asyncio=True builds redis.asyncio.retry.Retry, which is what the async factory does
+client = redis.asyncio.Redis(**build_base_redis_kwargs(settings, asyncio=True), host="localhost", port=6379)
 ```
 
 ```python

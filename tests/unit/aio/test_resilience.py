@@ -2,27 +2,37 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.asyncio import RedisCluster
+from redis.asyncio.retry import Retry
 from redis.exceptions import BusyLoadingError, ClusterDownError, TimeoutError
-from redis.retry import Retry
 
 from redis_client_kit import check_async_redis_health, create_async_redis_client
 
 
-def test__create_async_redis_client__retry_enabled__passes_retry_to_client(mock_redis_settings: MagicMock) -> None:
+@pytest.mark.parametrize(
+    "cluster_mode, expected_class",
+    [
+        (False, "InstrumentedRedis"),
+        (True, "InstrumentedRedisCluster"),
+    ],
+    ids=["single-node", "cluster"],
+)
+def test__create_async_redis_client__retry_enabled__passes_async_retry_to_client(
+    mock_redis_settings: MagicMock, cluster_mode: bool, expected_class: str
+) -> None:
     # Arrange
+    mock_redis_settings.cluster.enabled = cluster_mode
     mock_redis_settings.retry.enabled = True
     mock_redis_settings.retry.max_attempts = 5
-    mock_redis_settings.retry_backoff_base = 0.5
     mock_metrics = MagicMock()
 
     # Act
-    with patch("redis_client_kit.aio.factory.InstrumentedRedis") as mock_redis:
+    with patch(f"redis_client_kit.aio.factory.{expected_class}") as mock_class:
         create_async_redis_client(mock_redis_settings, metrics=mock_metrics)
 
         # Assert
-        kwargs = mock_redis.call_args[1]
-        assert "retry" in kwargs
-        assert isinstance(kwargs["retry"], Retry)
+        retry = mock_class.call_args[1]["retry"]
+        assert isinstance(retry, Retry)
+        assert retry._retries == 5
 
 
 def test__create_async_redis_client__ssl_enabled__passes_ssl_config_to_client(mock_redis_settings: MagicMock) -> None:

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
@@ -68,8 +69,34 @@ def test__build_redis_retry__retry_enabled__returns_retry_object(mock_redis_sett
     retry = build_redis_retry(mock_redis_settings)
 
     # Assert
-    assert retry is not None
-    assert getattr(retry, "_retries", 0) == 5
+    assert isinstance(retry, Retry)
+    assert retry._retries == 5
+
+
+def test__build_redis_retry__asyncio_retry_enabled__returns_async_retry_object(mock_redis_settings: MagicMock) -> None:
+    # Arrange
+    mock_redis_settings.retry.enabled = True
+    mock_redis_settings.retry.max_attempts = 5
+
+    # Act
+    retry = build_redis_retry(mock_redis_settings, asyncio=True)
+
+    # Assert
+    assert isinstance(retry, AsyncRetry)
+    assert retry._retries == 5
+
+
+def test__build_redis_retry__asyncio_retry_disabled__returns_async_zero_retries(mock_redis_settings: MagicMock) -> None:
+    # Arrange
+    mock_redis_settings.retry.enabled = False
+
+    # Act
+    retry = build_redis_retry(mock_redis_settings, asyncio=True)
+
+    # Assert
+    assert isinstance(retry, AsyncRetry)
+    assert retry._retries == 0
+    assert isinstance(retry._backoff, NoBackoff)
 
 
 def test__build_redis_retry__no_max_attempts__returns_zero_retries(mock_redis_settings: MagicMock) -> None:
@@ -119,6 +146,14 @@ def test__build_base_redis_kwargs__retry_disabled__passes_zero_retries(
     assert isinstance(retry, Retry)
     assert retry._retries == 0
     assert isinstance(retry._backoff, NoBackoff)
+
+
+def test__build_base_redis_kwargs__asyncio__passes_async_retry(mock_redis_settings: MagicMock) -> None:
+    # Act
+    kwargs = build_base_redis_kwargs(mock_redis_settings, asyncio=True)
+
+    # Assert
+    assert isinstance(kwargs["retry"], AsyncRetry)
 
 
 def test__build_base_redis_kwargs__ssl_enabled__includes_ssl_parameters(mock_redis_settings: MagicMock) -> None:
