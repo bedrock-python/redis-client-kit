@@ -3,6 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from redis_client_kit.sync import (
     check_redis_health,
@@ -90,21 +92,28 @@ def test__create_redis_client__cluster_without_nodes__uses_primary_host(
         assert kwargs["startup_nodes"][0].host == "cluster-host"
 
 
-def test__create_redis_client__retry_disabled__excludes_retry_from_kwargs(
-    mock_redis_settings: MagicMock,
+@pytest.mark.parametrize(
+    "cluster_mode, expected_class",
+    [(False, "InstrumentedRedis"), (True, "InstrumentedRedisCluster")],
+    ids=["single-node", "cluster"],
+)
+def test__create_redis_client__retry_disabled__passes_zero_retries_to_client(
+    mock_redis_settings: MagicMock, cluster_mode: bool, expected_class: str
 ) -> None:
     # Arrange
-    mock_redis_settings.cluster.enabled = False
+    mock_redis_settings.cluster.enabled = cluster_mode
     mock_redis_settings.retry.enabled = False
     mock_metrics = MagicMock()
 
     # Act
-    with patch("redis_client_kit.sync.factory.InstrumentedRedis") as mock_redis:
+    with patch(f"redis_client_kit.sync.factory.{expected_class}") as mock_class:
         create_redis_client(mock_redis_settings, metrics=mock_metrics)
 
         # Assert
-        kwargs = mock_redis.call_args[1]
-        assert "retry" not in kwargs
+        retry = mock_class.call_args[1]["retry"]
+        assert isinstance(retry, Retry)
+        assert retry._retries == 0
+        assert isinstance(retry._backoff, NoBackoff)
 
 
 def test__close_redis_client__valid_client__calls_close() -> None:

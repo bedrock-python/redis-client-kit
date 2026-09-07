@@ -1,11 +1,19 @@
 """Integration tests for Redis client lifecycle and cancellation safety."""
 
 import asyncio
+import time
 
 import pytest
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from testcontainers.redis import RedisContainer
 
-from redis_client_kit import check_async_redis_health, close_async_redis_client, create_async_redis_client
+from redis_client_kit import (
+    check_async_redis_health,
+    close_async_redis_client,
+    close_redis_client,
+    create_async_redis_client,
+    create_redis_client,
+)
 
 from .conftest import FakeRedisSettings, is_docker_available
 
@@ -67,3 +75,62 @@ async def test__redis_client__cancellation_during_operation__cleanup_succeeds(
     # Assert - This should not raise even after parent task cancellation
     # because of asyncio.shield in close_async_redis_client
     await close_async_redis_client(client)
+
+
+@pytest.mark.asyncio
+async def test__async_redis_client__retry_disabled_and_redis_paused__raises_within_socket_timeout(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    settings.pool.socket_timeout = 0.5
+    settings.pool.socket_connect_timeout = 0.5
+    settings.retry.enabled = False
+    client = create_async_redis_client(settings)
+    container = redis_container.get_wrapped_container()
+    await client.ping()
+
+    # Act
+    container.pause()
+    try:
+        started = time.perf_counter()
+        with pytest.raises(RedisTimeoutError):
+            await client.get("paused")
+        elapsed = time.perf_counter() - started
+    finally:
+        container.unpause()
+        await close_async_redis_client(client)
+
+    # Assert
+    assert elapsed < 2.0
+
+
+def test__sync_redis_client__retry_disabled_and_redis_paused__raises_within_socket_timeout(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    settings.pool.socket_timeout = 0.5
+    settings.pool.socket_connect_timeout = 0.5
+    settings.retry.enabled = False
+    client = create_redis_client(settings)
+    container = redis_container.get_wrapped_container()
+    client.ping()
+
+    # Act
+    container.pause()
+    try:
+        started = time.perf_counter()
+        with pytest.raises(RedisTimeoutError):
+            client.get("paused")
+        elapsed = time.perf_counter() - started
+    finally:
+        container.unpause()
+        close_redis_client(client)
+
+    # Assert
+    assert elapsed < 2.0

@@ -5,7 +5,7 @@ import binascii
 from pathlib import Path
 from urllib.parse import urlparse
 
-from redis.backoff import ExponentialBackoff
+from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.retry import Retry
 
 from .config import RedisSettingsProtocol
@@ -36,8 +36,6 @@ def parse_redis_url_node(node: str) -> tuple[str, int]:
 
 def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object]:
     """Build base Redis client keyword arguments."""
-    retry = build_redis_retry(settings)
-
     if settings.ssl.enabled:
         if settings.ssl.ca_certs:
             _validate_pem_format(settings.ssl.ca_certs, "CERTIFICATE")
@@ -54,6 +52,7 @@ def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object
         "socket_keepalive": settings.pool.socket_keepalive,
         "socket_keepalive_options": settings.pool.socket_keepalive_options,
         "health_check_interval": settings.health_check_interval,
+        "retry": build_redis_retry(settings),
         "decode_responses": settings.response.decode_responses,
         "encoding": settings.response.encoding,
         "client_name": settings.connection.client_name,
@@ -70,14 +69,16 @@ def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object
         kwargs["require_full_coverage"] = settings.cluster.require_full_coverage
         kwargs["read_from_replicas"] = settings.cluster.read_from_replicas
 
-    if retry is not None:
-        kwargs["retry"] = retry
-
     return kwargs
 
 
-def build_redis_retry(settings: RedisSettingsProtocol) -> Retry | None:
-    """Build Redis Retry object from settings."""
+def build_redis_retry(settings: RedisSettingsProtocol) -> Retry:
+    """Build Redis Retry object from settings.
+
+    Retries are off unless both ``retry.enabled`` and ``retry.max_attempts`` are set. Off is
+    still a ``Retry``, with zero retries: handed nothing, redis-py retries on its own (three
+    times since 6.0, ten since 8.0, with jittered backoff).
+    """
     if settings.retry.enabled and settings.retry.max_attempts:
         return Retry(
             backoff=ExponentialBackoff(
@@ -86,7 +87,7 @@ def build_redis_retry(settings: RedisSettingsProtocol) -> Retry | None:
             ),
             retries=settings.retry.max_attempts,
         )
-    return None
+    return Retry(backoff=NoBackoff(), retries=0)
 
 
 def _validate_pem_format(path: str | Path, file_type: str) -> None:
