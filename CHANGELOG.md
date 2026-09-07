@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.5...redis-client-kit-v0.2.0) (2026-09-07)
+
+
+### Features
+
+* add an opt-in write probe to the health checks ([#32](https://github.com/bedrock-python/redis-client-kit/issues/32)) ([aabafd1](https://github.com/bedrock-python/redis-client-kit/commit/aabafd1922e3e0cf1b525570f98cdf0f71a2856e))
+
 ## [0.1.5](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.4...redis-client-kit-v0.1.5) (2026-09-07)
 
 
