@@ -50,7 +50,7 @@ def _create_async_single_client(
         extra={"host": settings.connection.host, "port": settings.connection.port},
     )
 
-    client_kwargs: dict[str, Any] = build_base_redis_kwargs(settings)
+    client_kwargs: dict[str, Any] = build_base_redis_kwargs(settings, asyncio=True)
     client_kwargs.update(
         {
             "host": settings.connection.host,
@@ -87,7 +87,7 @@ def _create_async_cluster_client(
         },
     )
 
-    cluster_kwargs: dict[str, Any] = build_base_redis_kwargs(settings)
+    cluster_kwargs: dict[str, Any] = build_base_redis_kwargs(settings, asyncio=True)
     cluster_kwargs.update(
         {
             "startup_nodes": startup_nodes,

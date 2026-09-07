@@ -161,6 +161,12 @@ or more. Disabled means the first `ConnectionError` or `TimeoutError` is raised 
 with `socket_timeout=0.5`, a command against an unreachable Redis fails in about half a
 second.
 
+The async factory hands redis-py `redis.asyncio.retry.Retry` and the sync factory
+`redis.retry.Retry`; they are not interchangeable, because the sync class's
+`call_with_retry` does not await, so on a `redis.asyncio` client it never retries. If you
+assemble the keyword arguments yourself, `build_base_redis_kwargs(settings, asyncio=True)`
+and `build_redis_retry(settings, asyncio=True)` build the async flavour.
+
 Retry logic uses exponential backoff:
 ```
 delay = min(backoff_cap, backoff_base * (2 ** failures))

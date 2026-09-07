@@ -107,6 +107,39 @@ async def test__async_redis_client__retry_disabled_and_redis_paused__raises_with
     assert elapsed < 2.0
 
 
+@pytest.mark.asyncio
+async def test__async_redis_client__retry_enabled_and_redis_paused__retries_before_raising(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    settings.pool.socket_timeout = 0.5
+    settings.pool.socket_connect_timeout = 0.5
+    settings.retry.enabled = True
+    settings.retry.max_attempts = 3
+    settings.retry.backoff_base = 0.1
+    settings.retry.backoff_cap = 1.0
+    client = create_async_redis_client(settings)
+    container = redis_container.get_wrapped_container()
+    await client.ping()
+
+    # Act
+    container.pause()
+    try:
+        started = time.perf_counter()
+        with pytest.raises(RedisTimeoutError):
+            await client.get("paused")
+        elapsed = time.perf_counter() - started
+    finally:
+        container.unpause()
+        await close_async_redis_client(client)
+
+    # Assert - four attempts of 0.5 s plus 0.2 + 0.4 + 0.8 s of backoff, not a single attempt
+    assert 3.0 <= elapsed < 6.0
+
+
 def test__sync_redis_client__retry_disabled_and_redis_paused__raises_within_socket_timeout(
     redis_container: RedisContainer,
 ) -> None:
@@ -134,3 +167,35 @@ def test__sync_redis_client__retry_disabled_and_redis_paused__raises_within_sock
 
     # Assert
     assert elapsed < 2.0
+
+
+def test__sync_redis_client__retry_enabled_and_redis_paused__retries_before_raising(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    settings.pool.socket_timeout = 0.5
+    settings.pool.socket_connect_timeout = 0.5
+    settings.retry.enabled = True
+    settings.retry.max_attempts = 3
+    settings.retry.backoff_base = 0.1
+    settings.retry.backoff_cap = 1.0
+    client = create_redis_client(settings)
+    container = redis_container.get_wrapped_container()
+    client.ping()
+
+    # Act
+    container.pause()
+    try:
+        started = time.perf_counter()
+        with pytest.raises(RedisTimeoutError):
+            client.get("paused")
+        elapsed = time.perf_counter() - started
+    finally:
+        container.unpause()
+        close_redis_client(client)
+
+    # Assert - four attempts of 0.5 s plus 0.2 + 0.4 + 0.8 s of backoff, not a single attempt
+    assert 3.0 <= elapsed < 6.0

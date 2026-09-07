@@ -3,8 +3,10 @@
 import base64
 import binascii
 from pathlib import Path
+from typing import Literal, overload
 from urllib.parse import urlparse
 
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.retry import Retry
 
@@ -34,8 +36,12 @@ def parse_redis_url_node(node: str) -> tuple[str, int]:
     return host, port
 
 
-def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object]:
-    """Build base Redis client keyword arguments."""
+def build_base_redis_kwargs(settings: RedisSettingsProtocol, *, asyncio: bool = False) -> dict[str, object]:
+    """Build base Redis client keyword arguments.
+
+    ``asyncio=True`` builds them for a ``redis.asyncio`` client, whose ``retry`` has to be
+    ``redis.asyncio.retry.Retry``.
+    """
     if settings.ssl.enabled:
         if settings.ssl.ca_certs:
             _validate_pem_format(settings.ssl.ca_certs, "CERTIFICATE")
@@ -52,7 +58,7 @@ def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object
         "socket_keepalive": settings.pool.socket_keepalive,
         "socket_keepalive_options": settings.pool.socket_keepalive_options,
         "health_check_interval": settings.health_check_interval,
-        "retry": build_redis_retry(settings),
+        "retry": build_redis_retry(settings, asyncio=asyncio),
         "decode_responses": settings.response.decode_responses,
         "encoding": settings.response.encoding,
         "client_name": settings.connection.client_name,
@@ -72,22 +78,39 @@ def build_base_redis_kwargs(settings: RedisSettingsProtocol) -> dict[str, object
     return kwargs
 
 
-def build_redis_retry(settings: RedisSettingsProtocol) -> Retry:
+@overload
+def build_redis_retry(settings: RedisSettingsProtocol, *, asyncio: Literal[False] = ...) -> Retry: ...
+
+
+@overload
+def build_redis_retry(settings: RedisSettingsProtocol, *, asyncio: Literal[True]) -> AsyncRetry: ...
+
+
+@overload
+def build_redis_retry(settings: RedisSettingsProtocol, *, asyncio: bool) -> Retry | AsyncRetry: ...
+
+
+def build_redis_retry(settings: RedisSettingsProtocol, *, asyncio: bool = False) -> Retry | AsyncRetry:
     """Build Redis Retry object from settings.
 
     Retries are off unless both ``retry.enabled`` and ``retry.max_attempts`` are set. Off is
     still a ``Retry``, with zero retries: handed nothing, redis-py retries on its own (three
     times since 6.0, ten since 8.0, with jittered backoff).
+
+    ``asyncio=True`` builds ``redis.asyncio.retry.Retry``, the one a ``redis.asyncio`` client
+    needs: the sync class's ``call_with_retry`` does not await, so on an async client it
+    never retries.
     """
+    retry_class = AsyncRetry if asyncio else Retry
     if settings.retry.enabled and settings.retry.max_attempts:
-        return Retry(
+        return retry_class(
             backoff=ExponentialBackoff(
                 cap=settings.retry.backoff_cap,
                 base=settings.retry.backoff_base,
             ),
             retries=settings.retry.max_attempts,
         )
-    return Retry(backoff=NoBackoff(), retries=0)
+    return retry_class(backoff=NoBackoff(), retries=0)
 
 
 def _validate_pem_format(path: str | Path, file_type: str) -> None:

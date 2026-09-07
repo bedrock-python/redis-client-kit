@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.asyncio.cluster import RedisCluster
+from redis.asyncio.retry import Retry
 from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
-from redis.retry import Retry
 
 from redis_client_kit.aio import (
     check_async_redis_health,
