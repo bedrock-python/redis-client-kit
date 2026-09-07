@@ -5,17 +5,20 @@ import time
 
 import pytest
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from testcontainers.core.container import DockerContainer
 from testcontainers.redis import RedisContainer
 
 from redis_client_kit import (
     check_async_redis_health,
+    check_redis_health,
     close_async_redis_client,
     close_redis_client,
     create_async_redis_client,
     create_redis_client,
 )
+from redis_client_kit.utils import WRITE_PROBE_TTL_S
 
-from .conftest import FakeRedisSettings, is_docker_available
+from .conftest import REDIS_PORT, FakeRedisSettings, is_docker_available
 
 # Skip all tests in this module if docker is not available
 pytestmark = pytest.mark.skipif(not is_docker_available(), reason="Docker is not available")
@@ -199,3 +202,132 @@ def test__sync_redis_client__retry_enabled_and_redis_paused__retries_before_rais
 
     # Assert - four attempts of 0.5 s plus 0.2 + 0.4 + 0.8 s of backoff, not a single attempt
     assert 3.0 <= elapsed < 6.0
+
+
+@pytest.mark.asyncio
+async def test__async_health_check__write_key_on_a_healthy_server__returns_true_and_the_key_expires(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    client = create_async_redis_client(settings)
+
+    # Act
+    try:
+        is_healthy = await check_async_redis_health(client, write_key="test:health")
+        ttl = await client.ttl("test:health")
+    finally:
+        await close_async_redis_client(client)
+
+    # Assert
+    assert is_healthy is True
+    assert 0 < ttl <= WRITE_PROBE_TTL_S
+
+
+@pytest.mark.asyncio
+async def test__async_health_check__read_only_replica__ping_says_healthy_and_the_write_probe_does_not(
+    read_only_replica: DockerContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = read_only_replica.get_container_host_ip()
+    settings.connection.port = int(read_only_replica.get_exposed_port(REDIS_PORT))
+    client = create_async_redis_client(settings)
+
+    # Act
+    try:
+        ping_only = await check_async_redis_health(client)
+        with_write_probe = await check_async_redis_health(client, write_key="test:health")
+    finally:
+        await close_async_redis_client(client)
+
+    # Assert
+    assert ping_only is True
+    assert with_write_probe is False
+
+
+@pytest.mark.asyncio
+async def test__async_health_check__full_noeviction_server__ping_says_healthy_and_the_write_probe_does_not(
+    full_noeviction_redis: DockerContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = full_noeviction_redis.get_container_host_ip()
+    settings.connection.port = int(full_noeviction_redis.get_exposed_port(REDIS_PORT))
+    client = create_async_redis_client(settings)
+
+    # Act
+    try:
+        ping_only = await check_async_redis_health(client)
+        with_write_probe = await check_async_redis_health(client, write_key="test:health")
+    finally:
+        await close_async_redis_client(client)
+
+    # Assert
+    assert ping_only is True
+    assert with_write_probe is False
+
+
+def test__sync_health_check__write_key_on_a_healthy_server__returns_true_and_the_key_expires(
+    redis_container: RedisContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = redis_container.get_container_host_ip()
+    settings.connection.port = int(redis_container.get_exposed_port(redis_container.port))
+    client = create_redis_client(settings)
+
+    # Act
+    try:
+        is_healthy = check_redis_health(client, write_key="test:health")
+        ttl = client.ttl("test:health")
+    finally:
+        close_redis_client(client)
+
+    # Assert
+    assert is_healthy is True
+    assert 0 < ttl <= WRITE_PROBE_TTL_S
+
+
+def test__sync_health_check__read_only_replica__ping_says_healthy_and_the_write_probe_does_not(
+    read_only_replica: DockerContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = read_only_replica.get_container_host_ip()
+    settings.connection.port = int(read_only_replica.get_exposed_port(REDIS_PORT))
+    client = create_redis_client(settings)
+
+    # Act
+    try:
+        ping_only = check_redis_health(client)
+        with_write_probe = check_redis_health(client, write_key="test:health")
+    finally:
+        close_redis_client(client)
+
+    # Assert
+    assert ping_only is True
+    assert with_write_probe is False
+
+
+def test__sync_health_check__full_noeviction_server__ping_says_healthy_and_the_write_probe_does_not(
+    full_noeviction_redis: DockerContainer,
+) -> None:
+    # Arrange
+    settings = FakeRedisSettings()
+    settings.connection.host = full_noeviction_redis.get_container_host_ip()
+    settings.connection.port = int(full_noeviction_redis.get_exposed_port(REDIS_PORT))
+    client = create_redis_client(settings)
+
+    # Act
+    try:
+        ping_only = check_redis_health(client)
+        with_write_probe = check_redis_health(client, write_key="test:health")
+    finally:
+        close_redis_client(client)
+
+    # Assert
+    assert ping_only is True
+    assert with_write_probe is False

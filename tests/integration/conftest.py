@@ -3,6 +3,8 @@
 Automatically applies pytest.mark.integration to all tests in integration/ directory.
 """
 
+from collections.abc import Iterator
+
 try:
     import docker
     from docker.errors import DockerException
@@ -11,9 +13,17 @@ except ImportError:
     DockerException = Exception  # type: ignore[assignment, misc]
 
 import pytest
+from redis import Redis
+from redis.exceptions import OutOfMemoryError
+from testcontainers.core.container import DockerContainer
+from testcontainers.core.network import Network
+from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.redis import RedisContainer
 
 from redis_client_kit import RedisSettingsProtocol
+
+REDIS_IMAGE = "redis:7-alpine"
+REDIS_PORT = 6379
 
 
 def is_docker_available() -> bool:
@@ -117,7 +127,7 @@ class FakeRedisSettings(RedisSettingsProtocol):
 @pytest.fixture(scope="module")
 def redis_container() -> RedisContainer:
     """Provide a Redis container for integration tests."""
-    with RedisContainer("redis:7-alpine") as redis:
+    with RedisContainer(REDIS_IMAGE) as redis:
         yield redis
 
 
@@ -125,3 +135,52 @@ def redis_container() -> RedisContainer:
 def fake_redis_settings() -> FakeRedisSettings:
     """Provide fake Redis settings for testing."""
     return FakeRedisSettings()
+
+
+# Servers that answer PING and refuse writes
+
+
+@pytest.fixture(scope="module")
+def full_noeviction_redis() -> Iterator[DockerContainer]:
+    """A primary capped at 1 MB under ``noeviction``, filled until it refuses the next write."""
+    container = (
+        DockerContainer(REDIS_IMAGE)
+        .with_exposed_ports(REDIS_PORT)
+        .with_command("redis-server --maxmemory 1mb --maxmemory-policy noeviction")
+        .waiting_for(LogMessageWaitStrategy("Ready to accept connections"))
+    )
+    with container:
+        fill_until_full(container)
+        yield container
+
+
+@pytest.fixture(scope="module")
+def read_only_replica() -> Iterator[DockerContainer]:
+    """A replica started as ``redis-server --replicaof primary 6379``, synced with a live primary."""
+    with Network() as network:
+        primary = (
+            DockerContainer(REDIS_IMAGE)
+            .with_exposed_ports(REDIS_PORT)
+            .with_network(network)
+            .with_network_aliases("primary")
+        )
+        replica = (
+            DockerContainer(REDIS_IMAGE)
+            .with_exposed_ports(REDIS_PORT)
+            .with_network(network)
+            .with_command(f"redis-server --replicaof primary {REDIS_PORT}")
+            .waiting_for(LogMessageWaitStrategy("MASTER <-> REPLICA sync: Finished with success"))
+        )
+        with primary, replica:
+            yield replica
+
+
+def fill_until_full(container: DockerContainer) -> None:
+    """Write 8 KB values until one is refused, so a test meets a server that is already full."""
+    with Redis(host=container.get_container_host_ip(), port=int(container.get_exposed_port(REDIS_PORT))) as client:
+        for i in range(512):
+            try:
+                client.set(f"fill:{i}", "x" * 8192)
+            except OutOfMemoryError:
+                return
+    raise RuntimeError("Redis took 4 MB of writes under a 1 mb maxmemory cap")

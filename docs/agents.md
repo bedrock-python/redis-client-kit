@@ -60,8 +60,9 @@ Four nouns and one direction of travel.
 * **Metrics** — anything satisfying `RedisMetricsProtocol`
   (`record_command`, `record_error`, `record_pool_stats`). `RedisMetrics` from the
   `metrics` extra is a Prometheus implementation of it.
-* **Lifecycle** — `check_*_redis_health(client)` pings and returns a bool;
-  `close_*_redis_client(client)` closes and swallows. Neither raises.
+* **Lifecycle** — `check_*_redis_health(client)` pings and returns a bool, and with
+  `write_key=` writes that key as well; `close_*_redis_client(client)` closes and
+  swallows. Neither raises.
 
 Nothing here holds state of its own. The client is the state, and it is `redis-py`'s.
 
@@ -201,8 +202,8 @@ Everything in this table is importable from `redis_client_kit` itself.
 |---|---|---|
 | `create_async_redis_client` | `(settings, metrics=None)` | `Redis | RedisCluster`, instrumented when `metrics` is given |
 | `create_redis_client` | `(settings, metrics=None)` | the sync equivalent |
-| `check_async_redis_health` | `await (client)` | `bool` — never raises |
-| `check_redis_health` | `(client)` | `bool` — never raises |
+| `check_async_redis_health` | `await (client, write_key=None)` | `bool` — never raises; `write_key` adds `SET <write_key> 1 EX 60` after the ping |
+| `check_redis_health` | `(client, write_key=None)` | the sync equivalent |
 | `close_async_redis_client` | `await (client)` | `None` — shielded, 10 s timeout, never raises |
 | `close_redis_client` | `(client)` | `None` — never raises |
 | `build_base_redis_kwargs` | `(settings, asyncio=False)` | `dict[str, object]` of `redis-py` keyword arguments; `asyncio=True` for a `redis.asyncio` client |
@@ -222,7 +223,7 @@ The rest lives one import deeper.
 | `redis_client_kit.sync` | — | `SyncRedisClient`, `InstrumentedRedis`, `InstrumentedRedisCluster`, `create_redis_client`, `check_redis_health`, `close_redis_client` |
 | `redis_client_kit.config` | — | `RedisSettingsProtocol` and its parts: `RedisConnectionProtocol`, `RedisClusterProtocol`, `RedisPoolProtocol`, `RedisRetryProtocol`, `RedisSSLProtocol`, `RedisResponseProtocol` |
 | `redis_client_kit.protocols` | — | `RedisMetricsProtocol` |
-| `redis_client_kit.utils` | — | the three exported helpers, plus `mask_redis_kwargs(kwargs)` for logging |
+| `redis_client_kit.utils` | — | the three exported helpers, plus `mask_redis_kwargs(kwargs)` for logging and `WRITE_PROBE_TTL_S`, the write probe's expiry in seconds |
 | `redis_client_kit.settings` | `settings` | `BaseRedisSettings`, `RedisConnectionSettings`, `RedisClusterSettings`, `RedisPoolSettings`, `RedisRetrySettings`, `RedisSSLSettings`, `RedisResponseSettings` |
 | `redis_client_kit.metrics` | `metrics` | `RedisMetrics`, `REDIS_COMMAND_DURATION_BUCKETS` |
 | `redis_client_kit.providers` | `providers` | `AsyncRedisProvider(check_health_on_startup=True, provide_default_metrics=True)` |
@@ -328,9 +329,18 @@ See rules 15 to 17.
    `connection=RedisConnectionSettings(host="…")`.
 9. **`health_check_interval` is `redis-py`'s per-connection ping interval**, not the
    `check_*_redis_health` function. `0` and `None` both disable it.
-10. **The health check never raises and never says "maybe".** It returns `False` on any
-    error and logs it. A cluster `ping()` returns one entry per node, and the check is
-    `True` only when every node answered truthily.
+10. **The health check never raises and never says "maybe", and by default it only
+    pings.** It returns `False` on any error and logs it. A cluster `ping()` returns one
+    entry per node, and the check is `True` only when every node answered truthily. But
+    `PING` is a liveness answer, not a readiness one: a read-only replica and a server at
+    `maxmemory` under `noeviction` both reply `PONG` and refuse every write. Pass
+    `write_key="myapp:health"` and the check runs `SET <write_key> 1 EX 60`
+    (`WRITE_PROBE_TTL_S`) after the ping, returning `False` on `ReadOnlyError`,
+    `OutOfMemoryError` or anything else the write raises. The key is yours to name and
+    yours to prefix — `key_prefix` is applied to nothing (rule 7) — and it is left to
+    expire rather than deleted. It costs one more round trip under the same
+    `socket_timeout`, and on a cluster the write reaches only the node owning that key's
+    slot, so `True` there means every node answered and one of them took a write.
 11. **Closing never raises either.** `close_async_redis_client` shields `aclose()` and
     gives it 10 seconds (`ACLOSE_TIMEOUT_S`); a timeout or a broken close is a warning in
     the log, not an exception. Only `CancelledError` and `KeyboardInterrupt` propagate.
@@ -437,6 +447,16 @@ if not await check_async_redis_health(client):
 ```
 
 ```python
+# WRONG — readiness for a service that writes, from a check a read-only replica passes
+if not await check_async_redis_health(client):
+    return Response("unready", status_code=503)
+
+# RIGHT — ask for the write you are going to need
+if not await check_async_redis_health(client, write_key="myapp:health"):
+    return Response("unready", status_code=503)
+```
+
+```python
 # WRONG — a per-request client, and a close that can take the request down with it
 async def handler(settings):
     client = create_async_redis_client(settings)
@@ -467,7 +487,9 @@ Python, by Pydantic or by `redis-py`.
 | `ImportError` from an optional submodule | the extra is not installed; the message names it |
 
 `check_*_redis_health` and `close_*_redis_client` convert `redis-py`'s errors into a
-`False` and a log line respectively — they are the two places that swallow.
+`False` and a log line respectively — they are the two places that swallow. A refused
+write probe goes the same way: `ReadOnlyError` and `OutOfMemoryError` come back as `False`
+with a warning in the log, not as an exception.
 
 ## Documentation map
 

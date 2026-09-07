@@ -12,6 +12,8 @@ from redis.retry import Retry
 
 from .config import RedisSettingsProtocol
 
+WRITE_PROBE_TTL_S = 60
+
 
 def parse_redis_url_node(node: str) -> tuple[str, int]:
     """Parse Redis node from host:port, [ipv6]:port or redis:// URL string."""
@@ -143,6 +145,7 @@ def mask_redis_kwargs(kwargs: dict[str, object]) -> dict[str, object]:
 
 
 __all__ = [
+    "WRITE_PROBE_TTL_S",
     "build_base_redis_kwargs",
     "build_redis_retry",
     "mask_redis_kwargs",

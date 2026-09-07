@@ -95,6 +95,24 @@ else:
     print("Redis is not available")
 ```
 
+That is a `PING`, and `PING` answers `PONG` from a server that cannot take a write: a
+read-only replica that a failover or a DNS mistake pointed you at, or a primary at
+`maxmemory` under `noeviction`. Both are healthy for a reader and down for everyone else.
+If your service needs Redis for more than reads, hand the check a key and it writes too:
+
+```python
+is_healthy = await check_async_redis_health(client, write_key="myapp:health")
+```
+
+The write is `SET <write_key> 1 EX 60` (`WRITE_PROBE_TTL_S` in `redis_client_kit.utils`),
+run after the ping and only if the ping answered. The key is left to expire on its own.
+Name it yourself, prefix included — this library applies `key_prefix` to nothing. The
+default is unchanged: no `write_key`, no write. `check_redis_health` takes the same
+argument.
+
+The cost is one more round trip, under the same `socket_timeout`, and on a cluster the
+write reaches only the node that owns that key's slot — the ping still covers every node.
+
 ## Graceful Shutdown
 
 Always close the client properly:

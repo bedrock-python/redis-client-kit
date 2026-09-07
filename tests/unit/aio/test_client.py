@@ -5,13 +5,14 @@ import pytest
 from redis.asyncio.cluster import RedisCluster
 from redis.asyncio.retry import Retry
 from redis.backoff import NoBackoff
-from redis.exceptions import RedisError
+from redis.exceptions import OutOfMemoryError, ReadOnlyError, RedisError
 
 from redis_client_kit.aio import (
     check_async_redis_health,
     close_async_redis_client,
     create_async_redis_client,
 )
+from redis_client_kit.utils import WRITE_PROBE_TTL_S
 
 
 @pytest.mark.parametrize(
@@ -242,3 +243,84 @@ async def test__check_async_redis_health__cancelled_error__reraises_exception() 
     # Act & Assert
     with pytest.raises(asyncio.CancelledError):
         await check_async_redis_health(mock_client)
+
+
+@pytest.mark.asyncio
+async def test__check_async_redis_health__no_write_key__pings_only() -> None:
+    # Arrange
+    mock_client = AsyncMock()
+    mock_client.ping.return_value = True
+
+    # Act
+    result = await check_async_redis_health(mock_client)
+
+    # Assert
+    assert result is True
+    mock_client.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test__check_async_redis_health__write_key__sets_it_with_a_ttl_after_the_ping() -> None:
+    # Arrange
+    mock_client = AsyncMock()
+    mock_client.ping.return_value = True
+    mock_client.set.return_value = True
+
+    # Act
+    result = await check_async_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is True
+    mock_client.ping.assert_awaited_once()
+    mock_client.set.assert_awaited_once_with("myapp:health", "1", ex=WRITE_PROBE_TTL_S)
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        ReadOnlyError("You can't write against a read only replica."),
+        OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
+    ],
+    ids=["read-only-replica", "out-of-memory"],
+)
+@pytest.mark.asyncio
+async def test__check_async_redis_health__write_refused__returns_false(exception: Exception) -> None:
+    # Arrange
+    mock_client = AsyncMock()
+    mock_client.ping.return_value = True
+    mock_client.set.side_effect = exception
+
+    # Act
+    result = await check_async_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test__check_async_redis_health__failed_ping_with_write_key__does_not_write() -> None:
+    # Arrange
+    mock_client = AsyncMock()
+    mock_client.ping.return_value = False
+
+    # Act
+    result = await check_async_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is False
+    mock_client.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test__check_async_redis_health__cluster_with_write_key__pings_every_node_then_writes() -> None:
+    # Arrange
+    mock_client = AsyncMock(spec=RedisCluster)
+    mock_client.ping = AsyncMock(return_value={"node1": True, "node2": True})
+    mock_client.set = AsyncMock(return_value=True)
+
+    # Act
+    result = await check_async_redis_health(mock_client, write_key="myapp:health")
+
+    # Assert
+    assert result is True
+    mock_client.set.assert_awaited_once_with("myapp:health", "1", ex=WRITE_PROBE_TTL_S)

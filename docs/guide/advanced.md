@@ -240,6 +240,16 @@ is_healthy = await check_async_redis_health(client)
 # Returns True only if all nodes respond
 ```
 
+The [write probe](quickstart.md#health-checks) works here too, with one caveat: the ping
+still reaches every node, but `SET` reaches only the node that owns that key's slot.
+
+```python
+is_healthy = await check_async_redis_health(client, write_key="myapp:health")
+```
+
+`True` means every node answered the ping and one of them accepted a write. To cover the
+writability of every slot you would need a key per slot, which this check does not do.
+
 ### Read from Replicas
 
 Enable reading from replicas for read-heavy workloads:
