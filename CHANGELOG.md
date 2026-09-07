@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.3...redis-client-kit-v0.1.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* hand redis-py a zero-retry Retry when retries are disabled ([#27](https://github.com/bedrock-python/redis-client-kit/issues/27)) ([02d4f55](https://github.com/bedrock-python/redis-client-kit/commit/02d4f5590b6bcdc26d8d13c81cfc80bfd3551f1a))
+
 ## [0.1.3](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.2...redis-client-kit-v0.1.3) (2026-09-06)
 
 
