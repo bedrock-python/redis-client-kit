@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.4...redis-client-kit-v0.1.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* hand redis.asyncio.Redis the async Retry, not the sync one ([#29](https://github.com/bedrock-python/redis-client-kit/issues/29)) ([e8ee302](https://github.com/bedrock-python/redis-client-kit/commit/e8ee3024b8e402cdb80c531b9284d513111116ea))
+
 ## [0.1.4](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.3...redis-client-kit-v0.1.4) (2026-09-07)
 
 
