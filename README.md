@@ -193,10 +193,11 @@ instead, which is what a test suite that rebuilds its container per test wants.
 
 ```python
 from dishka import make_async_container
-from redis_client_kit.providers import AsyncRedisProvider
+from redis_client_kit.providers import AsyncRedisProvider, PrometheusRedisMetricsProvider
 
 container = make_async_container(
-    AsyncRedisProvider(),
+    AsyncRedisProvider(provide_default_metrics=False),
+    PrometheusRedisMetricsProvider(),  # RedisMetrics when settings.metrics_enabled, else None
     SettingsProvider(),  # Your settings provider
 )
 

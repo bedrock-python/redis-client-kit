@@ -137,7 +137,7 @@ raises `AttributeError` on the first one missing.
 | `response` | `RedisResponseSettings` | all defaults |
 | `key_prefix` | `str` | **required** — never read by this library |
 | `health_check_interval` | `int | None`, `ge=0` | `30` |
-| `metrics_enabled` | `bool` | `False` — never read by this library |
+| `metrics_enabled` | `bool` | `False` — read only by `PrometheusRedisMetricsProvider` |
 
 | Group | Field | Default | Notes |
 |---|---|---|---|
@@ -226,7 +226,7 @@ The rest lives one import deeper.
 | `redis_client_kit.utils` | — | the three exported helpers, plus `mask_redis_kwargs(kwargs)` for logging and `WRITE_PROBE_TTL_S`, the write probe's expiry in seconds |
 | `redis_client_kit.settings` | `settings` | `BaseRedisSettings`, `RedisConnectionSettings`, `RedisClusterSettings`, `RedisPoolSettings`, `RedisRetrySettings`, `RedisSSLSettings`, `RedisResponseSettings` |
 | `redis_client_kit.metrics` | `metrics` | `RedisMetrics`, `get_redis_metrics`, `REDIS_COMMAND_DURATION_BUCKETS` |
-| `redis_client_kit.providers` | `providers` | `AsyncRedisProvider(check_health_on_startup=True, provide_default_metrics=True)` |
+| `redis_client_kit.providers` | `providers` | `AsyncRedisProvider(check_health_on_startup=True, provide_default_metrics=True)`, `PrometheusRedisMetricsProvider(prefix=None)` |
 
 Each optional module raises `ImportError` at import time when its extra is missing, naming
 the extra. The root package imports none of them.
@@ -263,9 +263,7 @@ from dishka import Provider, Scope, make_async_container, provide
 
 from redis_client_kit import AsyncRedisClient
 from redis_client_kit.config import RedisSettingsProtocol
-from redis_client_kit.metrics import RedisMetrics
-from redis_client_kit.protocols import RedisMetricsProtocol
-from redis_client_kit.providers import AsyncRedisProvider
+from redis_client_kit.providers import AsyncRedisProvider, PrometheusRedisMetricsProvider
 from redis_client_kit.settings import BaseRedisSettings
 
 class AppProvider(Provider):
@@ -273,13 +271,13 @@ class AppProvider(Provider):
 
     @provide
     def settings(self) -> RedisSettingsProtocol:
-        return BaseRedisSettings(key_prefix="myapp")
+        return BaseRedisSettings(key_prefix="myapp", metrics_enabled=True)
 
-    @provide
-    def metrics(self) -> RedisMetricsProtocol | None:      # this exact annotation
-        return RedisMetrics(prefix="myapp")
-
-container = make_async_container(AsyncRedisProvider(), AppProvider())   # this order
+container = make_async_container(
+    AsyncRedisProvider(provide_default_metrics=False),
+    PrometheusRedisMetricsProvider(prefix="myapp"),
+    AppProvider(),
+)
 client = await container.get(AsyncRedisClient)
 ```
 
@@ -290,7 +288,14 @@ registers:
 | Argument | Default | Effect |
 |---|---|---|
 | `check_health_on_startup` | `True` | pings Redis before yielding the client, and raises when it does not answer; `False` registers the factory that yields immediately |
-| `provide_default_metrics` | `True` | provides `RedisMetricsProtocol | None` as `None` so a container without metrics resolves; `False` leaves that type to your own provider |
+| `provide_default_metrics` | `True` | provides `RedisMetricsProtocol | None` as `None` so a container without metrics resolves; `False` leaves that type to another provider |
+
+`PrometheusRedisMetricsProvider(*, prefix=None)` is that other provider: `Scope.APP`,
+requests `RedisSettingsProtocol` and nothing else, provides `RedisMetricsProtocol | None`
+as `get_redis_metrics(prefix)` when `settings.metrics_enabled` and as `None` otherwise.
+With `metrics_enabled` on it needs the `metrics` extra, and raises `ImportError` naming it
+when the collector is resolved. A collector of your own is a provider of the same key,
+registered in its place.
 
 See rules 15 to 17.
 
@@ -326,10 +331,11 @@ See rules 15 to 17.
    from a bad command is raised on the first try. The delay is
    `min(backoff_cap, backoff_base * 2**failures)` with no jitter, so the first retry waits
    exactly `backoff_base`.
-7. **`key_prefix` and `metrics_enabled` are declared and never read.** `key_prefix` is
-   required by `BaseRedisSettings` and used by nothing in this package;
-   `metrics_enabled=True` does not turn on instrumentation. Passing `metrics=` to the
-   factory does, and it is the only thing that does.
+7. **`key_prefix` is declared and never read; `metrics_enabled` is read by one thing.**
+   `key_prefix` is required by `BaseRedisSettings` and used by nothing in this package.
+   `metrics_enabled` is read only by `PrometheusRedisMetricsProvider`; the factory ignores
+   it, so `metrics_enabled=True` without that provider turns nothing on. Passing
+   `metrics=` to the factory does, and outside Dishka it is the only thing that does.
 8. **`BaseRedisSettings` is grouped and forbids extras.** `BaseRedisSettings(host="…")`
    raises `ValidationError: Extra inputs are not permitted`. Pass
    `connection=RedisConnectionSettings(host="…")`.
@@ -366,8 +372,9 @@ See rules 15 to 17.
     Dishka the last provider to claim a type wins — put it second and your metrics are
     silently dropped, leaving an uninstrumented client.
     `AsyncRedisProvider(provide_default_metrics=False)` registers no default, so order
-    stops mattering. Either way the annotation on your factory must be exactly
-    `RedisMetricsProtocol | None`; `RedisMetricsProtocol` is a different key.
+    stops mattering. This holds for `PrometheusRedisMetricsProvider` as much as for a
+    provider of your own; for your own, the annotation on the factory must be exactly
+    `RedisMetricsProtocol | None` — `RedisMetricsProtocol` is a different key.
 16. **The provider registers one client factory, chosen at construction.**
     `AsyncRedisProvider()` registers `get_redis_with_health_check()`;
     `AsyncRedisProvider(check_health_on_startup=False)` registers `get_redis()` instead.
@@ -434,12 +441,12 @@ client = redis.asyncio.Redis(**build_base_redis_kwargs(settings, asyncio=True), 
 ```
 
 ```python
-# WRONG — metrics_enabled does nothing, and the client is never instrumented
+# WRONG — the factory never reads metrics_enabled, and the client is never instrumented
 settings = BaseRedisSettings(key_prefix="myapp", metrics_enabled=True)
 client = create_async_redis_client(settings)
 
-# RIGHT
-client = create_async_redis_client(settings, metrics=RedisMetrics(prefix="myapp"))
+# RIGHT — pass the collector; only PrometheusRedisMetricsProvider reads the flag, and only in Dishka
+client = create_async_redis_client(settings, metrics=get_redis_metrics(prefix="myapp"))
 ```
 
 ```python

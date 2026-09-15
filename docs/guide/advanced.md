@@ -166,6 +166,29 @@ contact Redis at all.
 
 ### With Metrics
 
+`PrometheusRedisMetricsProvider` provides `RedisMetricsProtocol | None` — the key
+`AsyncRedisProvider` reads — as `get_redis_metrics(prefix)` when `settings.metrics_enabled`
+is on and `None` when it is off, so the client is instrumented exactly when the settings
+say so:
+
+```python
+from redis_client_kit.providers import AsyncRedisProvider, PrometheusRedisMetricsProvider
+
+container = make_async_container(
+    AsyncRedisProvider(provide_default_metrics=False),
+    PrometheusRedisMetricsProvider(),       # or PrometheusRedisMetricsProvider(prefix="myapp")
+    SettingsProvider(),
+)
+```
+
+With `metrics_enabled` on it needs the `metrics` extra; without it, resolving the
+collector raises `ImportError` naming the extra. The collector is the one
+`get_redis_metrics(prefix)` returns, so a container built per test never registers the
+same series twice.
+
+To wire a collector of your own — the `PrometheusRedisMetrics` above, say — provide the
+same key yourself:
+
 ```python
 from redis_client_kit.protocols import RedisMetricsProtocol
 

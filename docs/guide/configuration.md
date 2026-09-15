@@ -360,6 +360,7 @@ class MySettings:
     ssl: MySSL
     response: MyResponse
     health_check_interval: int = 30
+    metrics_enabled: bool = False
 
 # Use it
 settings = MySettings(
@@ -374,8 +375,9 @@ settings = MySettings(
 client = create_async_redis_client(settings)
 ```
 
-Every attribute the protocols name has to be there: the factory reads all of them and
-raises `AttributeError` on the first one missing. The protocols are not
+Every attribute the protocols name has to be there: the factory reads all of them but
+`metrics_enabled`, which only `PrometheusRedisMetricsProvider` reads, and raises
+`AttributeError` on the first one missing. The protocols are not
 `@runtime_checkable`, so `isinstance(settings, RedisSettingsProtocol)` raises `TypeError`.
 
 ## Configuration Best Practices
