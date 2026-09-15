@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.2.0...redis-client-kit-v0.3.0) (2026-09-15)
+
+
+### Features
+
+* ship PrometheusRedisMetricsProvider and a cached get_redis_metrics ([fbe8feb](https://github.com/bedrock-python/redis-client-kit/commit/fbe8feba0b3041d6af4744482419156e7b1ca8e7))
+
 ## [0.2.0](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.1.5...redis-client-kit-v0.2.0) (2026-09-07)
 
 
