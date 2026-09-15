@@ -71,5 +71,6 @@ def mock_redis_settings() -> MagicMock:
     settings.ssl = ssl
     settings.response = response
     settings.health_check_interval = 30
+    settings.metrics_enabled = False
 
     return settings

@@ -89,3 +89,4 @@ class RedisSettingsProtocol(Protocol):
     ssl: RedisSSLProtocol
     response: RedisResponseProtocol
     health_check_interval: int | None
+    metrics_enabled: bool

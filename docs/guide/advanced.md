@@ -92,6 +92,23 @@ client = create_async_redis_client(settings, metrics=metrics)
 # - myapp_redis_connection_errors_total{error_type}
 ```
 
+### One Instance Per Prefix
+
+Prometheus registers a metric name once per registry, so a second
+`RedisMetrics(prefix="myapp")` on the default registry raises
+`ValueError: Duplicated timeseries in CollectorRegistry` — what a test suite runs into
+when it builds a container per test. `get_redis_metrics(prefix=None)` caches one instance
+per prefix and hands it back on every later call:
+
+```python
+from redis_client_kit.metrics import get_redis_metrics
+
+metrics = get_redis_metrics(prefix="myapp")
+assert get_redis_metrics(prefix="myapp") is metrics
+```
+
+The [Dishka provider](#with-metrics) calls the getter for you.
+
 ### Metrics Configuration
 
 ```python
@@ -148,6 +165,29 @@ than handing out a client that cannot answer. Pass
 contact Redis at all.
 
 ### With Metrics
+
+`PrometheusRedisMetricsProvider` provides `RedisMetricsProtocol | None` — the key
+`AsyncRedisProvider` reads — as `get_redis_metrics(prefix)` when `settings.metrics_enabled`
+is on and `None` when it is off, so the client is instrumented exactly when the settings
+say so:
+
+```python
+from redis_client_kit.providers import AsyncRedisProvider, PrometheusRedisMetricsProvider
+
+container = make_async_container(
+    AsyncRedisProvider(provide_default_metrics=False),
+    PrometheusRedisMetricsProvider(),       # or PrometheusRedisMetricsProvider(prefix="myapp")
+    SettingsProvider(),
+)
+```
+
+With `metrics_enabled` on it needs the `metrics` extra; without it, resolving the
+collector raises `ImportError` naming the extra. The collector is the one
+`get_redis_metrics(prefix)` returns, so a container built per test never registers the
+same series twice.
+
+To wire a collector of your own — the `PrometheusRedisMetrics` above, say — provide the
+same key yourself:
 
 ```python
 from redis_client_kit.protocols import RedisMetricsProtocol

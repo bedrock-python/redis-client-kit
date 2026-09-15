@@ -39,6 +39,7 @@ def test__providers_init__dishka_installed__imports_successfully(monkeypatch: py
     mock_deps.HAS_DISHKA = True
     mock_deps.AsyncRedisProvider = MagicMock
     monkeypatch.setitem(sys.modules, "redis_client_kit.providers._deps", mock_deps)
+    monkeypatch.setitem(sys.modules, "redis_client_kit.providers.metrics", mock_deps)
     monkeypatch.setitem(sys.modules, "redis_client_kit.providers.redis", mock_deps)
     monkeypatch.setitem(sys.modules, "redis_client_kit.providers.utils", mock_deps)
 

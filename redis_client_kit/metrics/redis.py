@@ -30,6 +30,9 @@ class RedisMetrics:
         >>> metrics = RedisMetrics(prefix="myapp")
         >>> metrics.record_command("GET", "success", 0.001)
         >>> metrics.record_pool_stats(pool_size=10, pool_checked_out=3)
+
+    Prometheus registers a metric name once per registry, so a second instance with the
+    same prefix raises ``ValueError``; ``get_redis_metrics`` hands back the first one instead.
     """
 
     def __init__(self, prefix: str | None = None) -> None:
@@ -37,6 +40,10 @@ class RedisMetrics:
 
         Args:
             prefix: Optional metric name prefix (e.g., "myapp" -> "myapp_redis_pool_size")
+
+        Raises:
+            ValueError: If a metric of the same name is already registered on the default
+                registry -- see ``get_redis_metrics`` for the second instance.
         """
         metric_prefix = f"{prefix}_" if prefix else ""
 
@@ -95,4 +102,27 @@ class RedisMetrics:
         self.pool_checked_out.set(float(pool_checked_out))
 
 
-__all__ = ["REDIS_COMMAND_DURATION_BUCKETS", "RedisMetrics"]
+_REDIS_METRICS_CACHE: dict[str | None, RedisMetrics] = {}
+
+
+def get_redis_metrics(prefix: str | None = None) -> RedisMetrics:
+    """Get (or lazily create) the cached ``RedisMetrics`` for a prefix, on the default registry.
+
+    Caching by prefix is what lets a container be rebuilt -- a test suite does it per test --
+    without Prometheus refusing the second registration of the same series.
+
+    Args:
+        prefix: The metric name prefix the instance was, or is, created with; ``""`` and
+            ``None`` are the same unprefixed instance.
+
+    Returns:
+        The one instance for that prefix.
+    """
+    key = prefix or None
+    metrics = _REDIS_METRICS_CACHE.get(key)
+    if metrics is None:
+        metrics = _REDIS_METRICS_CACHE[key] = RedisMetrics(prefix=key)
+    return metrics
+
+
+__all__ = ["REDIS_COMMAND_DURATION_BUCKETS", "RedisMetrics", "get_redis_metrics"]
