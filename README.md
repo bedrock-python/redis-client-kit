@@ -185,6 +185,10 @@ client = create_async_redis_client(settings, metrics=metrics)
 # - myapp_redis_connection_errors_total{error_type}
 ```
 
+Prometheus registers a metric name once per process, so a second `RedisMetrics(prefix="myapp")`
+raises `ValueError`. `get_redis_metrics(prefix="myapp")` returns the one instance per prefix
+instead, which is what a test suite that rebuilds its container per test wants.
+
 ### With Dishka DI
 
 ```python

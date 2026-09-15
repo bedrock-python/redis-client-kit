@@ -92,6 +92,23 @@ client = create_async_redis_client(settings, metrics=metrics)
 # - myapp_redis_connection_errors_total{error_type}
 ```
 
+### One Instance Per Prefix
+
+Prometheus registers a metric name once per registry, so a second
+`RedisMetrics(prefix="myapp")` on the default registry raises
+`ValueError: Duplicated timeseries in CollectorRegistry` — what a test suite runs into
+when it builds a container per test. `get_redis_metrics(prefix=None)` caches one instance
+per prefix and hands it back on every later call:
+
+```python
+from redis_client_kit.metrics import get_redis_metrics
+
+metrics = get_redis_metrics(prefix="myapp")
+assert get_redis_metrics(prefix="myapp") is metrics
+```
+
+The [Dishka provider](#with-metrics) calls the getter for you.
+
 ### Metrics Configuration
 
 ```python

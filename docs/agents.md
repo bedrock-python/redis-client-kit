@@ -225,7 +225,7 @@ The rest lives one import deeper.
 | `redis_client_kit.protocols` | — | `RedisMetricsProtocol` |
 | `redis_client_kit.utils` | — | the three exported helpers, plus `mask_redis_kwargs(kwargs)` for logging and `WRITE_PROBE_TTL_S`, the write probe's expiry in seconds |
 | `redis_client_kit.settings` | `settings` | `BaseRedisSettings`, `RedisConnectionSettings`, `RedisClusterSettings`, `RedisPoolSettings`, `RedisRetrySettings`, `RedisSSLSettings`, `RedisResponseSettings` |
-| `redis_client_kit.metrics` | `metrics` | `RedisMetrics`, `REDIS_COMMAND_DURATION_BUCKETS` |
+| `redis_client_kit.metrics` | `metrics` | `RedisMetrics`, `get_redis_metrics`, `REDIS_COMMAND_DURATION_BUCKETS` |
 | `redis_client_kit.providers` | `providers` | `AsyncRedisProvider(check_health_on_startup=True, provide_default_metrics=True)` |
 
 Each optional module raises `ImportError` at import time when its extra is missing, naming
@@ -249,6 +249,12 @@ Buckets are `REDIS_COMMAND_DURATION_BUCKETS` — `(0.0001, 0.0005, 0.001, 0.005,
 `RedisMetricsProtocol` implementation if you need different ones. `command` is the first
 argument of `execute_command`, upper-cased — it is unbounded cardinality only if you send
 unbounded command names.
+
+`get_redis_metrics(prefix=None)` returns the one `RedisMetrics` per prefix on the default
+registry, creating it on the first call and handing the same instance back afterwards;
+`""` and `None` are the same unprefixed instance. Use it wherever the collector may be
+asked for twice in one process — a container rebuilt per test, above all — since a second
+`RedisMetrics()` with the same prefix raises (rule 18).
 
 ### Dishka
 
@@ -375,7 +381,8 @@ See rules 15 to 17.
     block startup.
 18. **A `RedisMetrics` instance owns global Prometheus names.** Building a second one with
     the same prefix raises a duplicate-timeseries `ValueError` from the default registry.
-    Build one per process and inject it.
+    That is Prometheus, not this package: build one per process and inject it, or ask
+    `get_redis_metrics(prefix)` and get the same instance back on every call.
 19. **Cluster clients record no pool statistics.** Single-node clients, async and sync,
     report `redis_pool_size` and `redis_pool_checked_out` from the pool's own containers
     before every command; `InstrumentedRedisCluster` reports neither. Command counts,
