@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -34,15 +34,22 @@ jobs:
       - run: uv sync --all-extras --group dev
       - run: uv run pytest -m unit
 
+  # Runs the whole suite, as `make test` does: only this job has the Docker the
+  # integration tests need, and the coverage threshold counts both kinds of test.
   test-integration:
-    name: Integration tests
+    name: Integration tests and coverage
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-extras --group dev
-      - run: uv run pytest -m integration
+      - run: uv run pytest --cov=redis_client_kit --cov-report=term --cov-fail-under=90 --cov-report=xml:coverage.xml
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+        continue-on-error: true
 
   # Sentinel job — use this as the single required status check in branch protection.
   all-checks-passed:

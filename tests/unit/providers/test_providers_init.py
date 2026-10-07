@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import redis_client_kit
+
 
 def _unload_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     """Drop the providers package from sys.modules for the duration of one test.
@@ -14,6 +16,10 @@ def _unload_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for module in [key for key in sys.modules if key.startswith("redis_client_kit.providers")]:
         monkeypatch.delitem(sys.modules, module)
+    # A successful import also binds the new package onto its parent. Restore that
+    # too: mock.patch on Python 3.10 resolves a target attribute by attribute and
+    # would otherwise find this test's stand-in package.
+    monkeypatch.delattr(redis_client_kit, "providers", raising=False)
 
 
 def test__providers_init__dishka_not_installed__raises_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
