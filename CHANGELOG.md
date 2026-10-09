@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.3.0...redis-client-kit-v0.4.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* a hand-written connection object now needs a username attribute (None for the default user); without it the factories raise AttributeError.
+
+### Features
+
+* log in as a Redis ACL user with connection.username ([#49](https://github.com/bedrock-python/redis-client-kit/issues/49)) ([53b09e5](https://github.com/bedrock-python/redis-client-kit/commit/53b09e5132fb8bdcfdd1beadfda5a581c22dd02b))
+
 ## [0.3.0](https://github.com/bedrock-python/redis-client-kit/compare/redis-client-kit-v0.2.0...redis-client-kit-v0.3.0) (2026-09-15)
 
 
