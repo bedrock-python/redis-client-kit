@@ -102,6 +102,7 @@ from dataclasses import dataclass, field
 class Connection:
     host: str = "localhost"
     port: int = 6379
+    username: str | None = None
     db: int = 0
     client_name: str | None = None
     protocol: int = 2
@@ -119,8 +120,7 @@ client = create_async_redis_client(Settings())
 ```
 
 Every attribute the protocols name has to be there: the factory reads all of them and
-raises `AttributeError` on the first one missing. `connection.username` is optional and not
-in the protocol: when the object has it, the client logs in as that ACL user.
+raises `AttributeError` on the first one missing.
 
 ## Settings
 

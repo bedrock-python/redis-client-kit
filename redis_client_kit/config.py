@@ -4,14 +4,11 @@ from typing import Protocol
 
 
 class RedisConnectionProtocol(Protocol):
-    """Protocol for Redis connection settings.
-
-    A ``username: str | None`` attribute is read too when the object has one: the Redis ACL
-    user to log in as. Without it the client logs in as ``default``.
-    """
+    """Protocol for Redis connection settings."""
 
     host: str
     port: int
+    username: str | None
     db: int
     client_name: str | None
     protocol: int

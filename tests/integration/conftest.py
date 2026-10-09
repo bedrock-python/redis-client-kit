@@ -55,6 +55,7 @@ class FakeConnection:
 
     host = "localhost"
     port = 6379
+    username = None
     db = 0
     client_name = None
     protocol = 2

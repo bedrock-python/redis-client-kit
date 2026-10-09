@@ -347,6 +347,7 @@ from redis_client_kit.config import (
 class MyConnection:
     host: str = "localhost"
     port: int = 6379
+    username: str | None = None
     db: int = 0
     client_name: str | None = None
     protocol: int = 2
@@ -415,10 +416,8 @@ client = create_async_redis_client(settings)
 
 Every attribute the protocols name has to be there: the factory reads all of them but
 `metrics_enabled`, which only `PrometheusRedisMetricsProvider` reads, and raises
-`AttributeError` on the first one missing. `connection.username` is the one optional
-attribute: give the connection object a `username: str | None` to log in as an ACL user.
-The protocols are not `@runtime_checkable`, so `isinstance(settings, RedisSettingsProtocol)`
-raises `TypeError`.
+`AttributeError` on the first one missing. The protocols are not
+`@runtime_checkable`, so `isinstance(settings, RedisSettingsProtocol)` raises `TypeError`.
 
 ## Configuration Best Practices
 

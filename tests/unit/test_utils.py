@@ -144,10 +144,7 @@ def test__build_base_redis_kwargs__username_set__passes_acl_user(mock_redis_sett
     assert kwargs["password"] == "password"
 
 
-def test__build_base_redis_kwargs__connection_without_username__passes_none(mock_redis_settings: MagicMock) -> None:
-    # Arrange: the spec'd connection mock has no ``username``, like a settings object written before it
-    assert not hasattr(mock_redis_settings.connection, "username")
-
+def test__build_base_redis_kwargs__username_unset__passes_none(mock_redis_settings: MagicMock) -> None:
     # Act
     kwargs = build_base_redis_kwargs(mock_redis_settings)
 

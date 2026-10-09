@@ -22,6 +22,7 @@ def mock_redis_settings() -> MagicMock:
     connection = MagicMock(spec=RedisConnectionProtocol)
     connection.host = "localhost"
     connection.port = 6379
+    connection.username = None
     connection.db = 0
     connection.client_name = None
     connection.protocol = 2
