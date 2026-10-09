@@ -53,6 +53,8 @@ def build_base_redis_kwargs(settings: RedisSettingsProtocol, *, asyncio: bool = 
             _validate_pem_format(settings.ssl.keyfile, "PRIVATE KEY")
 
     kwargs: dict[str, object] = {
+        # Optional on the connection protocol, so settings objects written before it still work.
+        "username": getattr(settings.connection, "username", None),
         "password": settings.connection.get_password(),
         "max_connections": settings.pool.max_connections,
         "socket_timeout": settings.pool.socket_timeout,

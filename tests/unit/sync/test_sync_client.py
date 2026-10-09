@@ -118,6 +118,27 @@ def test__create_redis_client__retry_disabled__passes_zero_retries_to_client(
         assert isinstance(retry._backoff, NoBackoff)
 
 
+@pytest.mark.parametrize(
+    "cluster_mode, expected_class",
+    [(False, "Redis"), (True, "RedisCluster")],
+    ids=["single-node", "cluster"],
+)
+def test__create_redis_client__username_set__passes_acl_user_to_client(
+    mock_redis_settings: MagicMock, cluster_mode: bool, expected_class: str
+) -> None:
+    # Arrange
+    mock_redis_settings.cluster.enabled = cluster_mode
+    mock_redis_settings.connection.username = "app"
+
+    # Act
+    with patch(f"redis_client_kit.sync.factory.{expected_class}") as mock_class:
+        create_redis_client(mock_redis_settings)
+
+        # Assert
+        assert mock_class.call_args[1]["username"] == "app"
+        assert mock_class.call_args[1]["password"] == "password"
+
+
 def test__close_redis_client__valid_client__calls_close() -> None:
     # Arrange
     mock_client = MagicMock()

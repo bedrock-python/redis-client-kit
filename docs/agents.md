@@ -119,7 +119,8 @@ client = create_async_redis_client(Settings())
 ```
 
 Every attribute the protocols name has to be there: the factory reads all of them and
-raises `AttributeError` on the first one missing.
+raises `AttributeError` on the first one missing. `connection.username` is optional and not
+in the protocol: when the object has it, the client logs in as that ACL user.
 
 ## Settings
 
@@ -143,6 +144,7 @@ raises `AttributeError` on the first one missing.
 |---|---|---|---|
 | `RedisConnectionSettings` | `host` | `"localhost"` | |
 | | `port` | `6379` | `1 ≤ port ≤ 65535` |
+| | `username` | `None` | Redis ACL user; `None` logs in as `default` |
 | | `password` | `None` | `SecretStr`; read with `get_password()` |
 | | `db` | `0` | `0 ≤ db ≤ 15`, must be `0` in cluster mode |
 | | `client_name` | `None` | `CLIENT SETNAME` value |
