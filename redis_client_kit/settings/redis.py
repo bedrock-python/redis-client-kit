@@ -10,6 +10,7 @@ class RedisConnectionSettings(BaseModel):  # type: ignore[misc]
 
     host: str = Field(default="localhost", description="Redis host")
     port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    username: str | None = Field(default=None, description="Redis ACL user name (optional; `default` when unset)")
     password: SecretStr | None = Field(default=None, description="Redis password (optional)")
     db: int = Field(default=0, ge=0, le=15, description="Redis database number (ignored in cluster mode)")
     client_name: str | None = Field(default=None, description="Identifier for this client in Redis")

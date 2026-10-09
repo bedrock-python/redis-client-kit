@@ -132,6 +132,26 @@ def test__build_base_redis_kwargs__full_config__returns_all_parameters(mock_redi
     assert "retry" in kwargs
 
 
+def test__build_base_redis_kwargs__username_set__passes_acl_user(mock_redis_settings: MagicMock) -> None:
+    # Arrange
+    mock_redis_settings.connection.username = "app"
+
+    # Act
+    kwargs = build_base_redis_kwargs(mock_redis_settings)
+
+    # Assert
+    assert kwargs["username"] == "app"
+    assert kwargs["password"] == "password"
+
+
+def test__build_base_redis_kwargs__username_unset__passes_none(mock_redis_settings: MagicMock) -> None:
+    # Act
+    kwargs = build_base_redis_kwargs(mock_redis_settings)
+
+    # Assert
+    assert kwargs["username"] is None
+
+
 def test__build_base_redis_kwargs__retry_disabled__passes_zero_retries(
     mock_redis_settings: MagicMock,
 ) -> None:
@@ -228,3 +248,14 @@ def test__mask_redis_kwargs__sensitive_data__masks_password() -> None:
     assert masked["host"] == "localhost"
     assert kwargs["password"] == "secret_password"  # Ensure original is not modified
     assert masked_no_pwd == kwargs_no_pwd
+
+
+def test__mask_redis_kwargs__username__left_unmasked() -> None:
+    # Arrange
+    kwargs: dict[str, object] = {"username": "app", "password": "secret_password"}
+
+    # Act
+    masked = mask_redis_kwargs(kwargs)
+
+    # Assert
+    assert masked == {"username": "app", "password": "********"}

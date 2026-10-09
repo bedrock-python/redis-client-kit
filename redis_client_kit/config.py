@@ -8,6 +8,7 @@ class RedisConnectionProtocol(Protocol):
 
     host: str
     port: int
+    username: str | None
     db: int
     client_name: str | None
     protocol: int

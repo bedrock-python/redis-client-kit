@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from redis_client_kit.settings import BaseRedisSettings
 from redis_client_kit.settings.redis import (
@@ -159,6 +160,33 @@ def test__base_redis_settings__get_password_none__returns_none() -> None:
 
     # Assert
     assert password is None
+
+
+def test__base_redis_settings__username_unset__defaults_to_none() -> None:
+    # Arrange & Act
+    settings = BaseRedisSettings(key_prefix="myapp")
+
+    # Assert
+    assert settings.connection.username is None
+
+
+def test__base_redis_settings__username_env_var__reads_acl_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    class AppSettings(BaseSettings):
+        model_config = SettingsConfigDict(env_nested_delimiter="__")
+
+        redis: BaseRedisSettings
+
+    monkeypatch.setenv("REDIS__KEY_PREFIX", "bertie")
+    monkeypatch.setenv("REDIS__CONNECTION__USERNAME", "bertie")
+    monkeypatch.setenv("REDIS__CONNECTION__PASSWORD", "bertie-secret")
+
+    # Act
+    settings = AppSettings()
+
+    # Assert
+    assert settings.redis.connection.username == "bertie"
+    assert settings.redis.connection.get_password() == "bertie-secret"
 
 
 def test__base_redis_settings__retry_configuration__includes_all_parameters() -> None:

@@ -69,6 +69,7 @@ settings = BaseRedisSettings(
     connection=RedisConnectionSettings(
         host="redis.example.com",
         port=6379,
+        username="myapp",    # Redis ACL user; `default` when unset
         password="secret",   # stored as SecretStr, read with get_password()
         db=0,
         client_name="myapp",
@@ -104,10 +105,47 @@ class Settings(BaseRedisSettings):
 # REDIS_KEY_PREFIX=myapp
 # REDIS_CONNECTION__HOST=redis.example.com
 # REDIS_CONNECTION__PORT=6379
+# REDIS_CONNECTION__USERNAME=myapp
 # REDIS_CONNECTION__PASSWORD=secret
 
 settings = Settings()
 ```
+
+### ACL Users
+
+Without `username` the client logs in as Redis's `default` user. To share one Redis
+between applications, give each its own ACL user (Redis 6+) and set `username` next to
+`password`:
+
+```python
+settings = BaseRedisSettings(
+    key_prefix="myapp",
+    connection=RedisConnectionSettings(
+        host="redis.example.com",
+        username="myapp",
+        password="secret",
+    ),
+)
+```
+
+Every client the factories build gets it: sync and asyncio, single node and cluster.
+
+A rule that keeps the user to its own keys and still lets this library work:
+
+```
+ACL SETUSER myapp on >secret resetkeys ~myapp:* resetchannels &myapp:* -@all +@read +@write -@dangerous +ping
+```
+
+- `+ping`: `check_*_redis_health`, the provider's startup check and
+  `health_check_interval` all send `PING`, which is in neither `@read` nor `@write`.
+- `-@dangerous`: `@write` includes `FLUSHDB` and `FLUSHALL`, and a key pattern does not
+  stop them, because they name no key. `-@dangerous` removes them, and `KEYS` with them.
+- Add `+client|setname` when `client_name` is set; without it every connection fails.
+- Add `+select` when `db` is not `0`, for the same reason.
+- A health check's `write_key` has to match the key pattern, such as `myapp:probe`.
+
+`SCAN` still lists the names of every key in the database; add `-scan` if the names are
+private too.
 
 ## Connection Pool Settings
 
@@ -309,6 +347,7 @@ from redis_client_kit.config import (
 class MyConnection:
     host: str = "localhost"
     port: int = 6379
+    username: str | None = None
     db: int = 0
     client_name: str | None = None
     protocol: int = 2

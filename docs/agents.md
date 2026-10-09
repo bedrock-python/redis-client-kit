@@ -102,6 +102,7 @@ from dataclasses import dataclass, field
 class Connection:
     host: str = "localhost"
     port: int = 6379
+    username: str | None = None
     db: int = 0
     client_name: str | None = None
     protocol: int = 2
@@ -143,6 +144,7 @@ raises `AttributeError` on the first one missing.
 |---|---|---|---|
 | `RedisConnectionSettings` | `host` | `"localhost"` | |
 | | `port` | `6379` | `1 ≤ port ≤ 65535` |
+| | `username` | `None` | Redis ACL user; `None` logs in as `default` |
 | | `password` | `None` | `SecretStr`; read with `get_password()` |
 | | `db` | `0` | `0 ≤ db ≤ 15`, must be `0` in cluster mode |
 | | `client_name` | `None` | `CLIENT SETNAME` value |
